@@ -1,0 +1,82 @@
+---
+import AppLayout from "../../../layouts/AppLayout.astro";
+import type { SigningProcessDetail } from "@firmador/shared";
+import { serverFetch } from "../../../lib/server/api";
+
+const { processId } = Astro.params;
+const response = await serverFetch(Astro.request, `/api/signing/processes/${processId}`);
+if (!response.ok) {
+  return Astro.redirect("/history");
+}
+
+const process = (await response.json()) as SigningProcessDetail;
+if (process.status === "SIGNED" || process.status === "FAILED" || process.status === "EXPIRED") {
+  return Astro.redirect(`/sign/${processId}/result`);
+}
+if (process.status !== "CHALLENGE_PENDING") {
+  return Astro.redirect(`/sign/${processId}/progress`);
+}
+const challenge = process.challenge;
+if (!challenge) {
+  return Astro.redirect(`/sign/${processId}/progress`);
+}
+---
+
+<AppLayout title="Validación challenge" user={Astro.locals.user}>
+  <section class="mx-auto max-w-3xl">
+    <form class="panel animate-rise space-y-5 px-6 py-6" id="challenge-form">
+      <input name="idChallenge" type="hidden" value={challenge.idChallenge} />
+      <div>
+        <h2 class="text-lg font-semibold text-ink">Confirma la identidad del firmante</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Responde las preguntas entregadas por el proveedor para continuar con la emisión/configuración del certificado.
+        </p>
+      </div>
+
+      {challenge.questions.map((question) => (
+        <label class="block text-sm text-slate-700">
+          <span class="font-medium">{question.prompt}</span>
+          <select class="field mt-2" data-question={question.id} required>
+            <option value="">Selecciona una opción</option>
+            {question.options.map((option) => (
+              <option value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+      ))}
+
+      <div class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="challenge-error"></div>
+      <button class="button-primary" type="submit">Enviar respuestas</button>
+    </form>
+  </section>
+
+  <script is:inline data-process-id={processId}>
+    const processId = document.currentScript?.getAttribute("data-process-id") ?? "";
+    const form = document.querySelector("#challenge-form");
+    const errorBox = document.querySelector("#challenge-error");
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox?.classList.add("hidden");
+
+      const idChallenge = form.querySelector('input[name="idChallenge"]').value;
+      const answers = Array.from(form.querySelectorAll("select[data-question]")).map((select) => ({
+        question: Number(select.getAttribute("data-question")),
+        answer: Number(select.value),
+      }));
+
+      const response = await fetch(`/api/signing/processes/${processId}/challenge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idChallenge, answers }),
+      });
+
+      if (!response.ok) {
+        errorBox.textContent = "No se pudieron enviar las respuestas. Revisa los datos y vuelve a intentar.";
+        errorBox.classList.remove("hidden");
+        return;
+      }
+
+      window.location.assign(`/sign/${processId}/progress`);
+    });
+  </script>
+</AppLayout>

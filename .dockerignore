@@ -1,0 +1,8 @@
+node_modules
+.git
+.astro
+coverage
+dist
+apps/api/storage
+apps/api/data
+

@@ -1,0 +1,50 @@
+---
+import AppLayout from "../../../layouts/AppLayout.astro";
+import StatusBadge from "../../../components/StatusBadge.astro";
+import type { SigningProcessDetail } from "@firmador/shared";
+import { serverFetch } from "../../../lib/server/api";
+
+const { processId } = Astro.params;
+const response = await serverFetch(Astro.request, `/api/signing/processes/${processId}`);
+if (!response.ok) {
+  return Astro.redirect("/history");
+}
+
+const process = (await response.json()) as SigningProcessDetail;
+---
+
+<AppLayout title="Resultado del proceso" user={Astro.locals.user}>
+  <section class="mx-auto max-w-4xl space-y-4">
+    <article class="panel animate-rise px-6 py-6">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-semibold text-ink">{process.originalFileName}</h2>
+          <p class="mt-2 text-sm text-slate-600">
+            Hash SHA-256: <span class="font-mono text-xs">{process.sha256}</span>
+          </p>
+        </div>
+        <StatusBadge status={process.status} />
+      </div>
+
+      {process.status === "SIGNED" ? (
+        <div class="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-sm text-emerald-900">
+          La firma fue completada. El PDF firmado estará disponible hasta {new Date(process.expiresAt).toLocaleString("es-CL")}.
+        </div>
+      ) : (
+        <div class="mt-6 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-5 text-sm text-rose-700">
+          {process.errorMessage ?? "El proceso no pudo completarse correctamente."}
+        </div>
+      )}
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        {process.status === "SIGNED" && (
+          <a class="button-primary" href={`/api/signing/processes/${processId}/download`}>
+            Descargar PDF firmado
+          </a>
+        )}
+        <a class="button-secondary" href="/sign/new">Firmar otro PDF</a>
+        <a class="button-secondary" href="/history">Volver al historial</a>
+      </div>
+    </article>
+  </section>
+</AppLayout>

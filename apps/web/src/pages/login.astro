@@ -1,0 +1,37 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+
+const error = Astro.url.searchParams.get("error");
+---
+
+<AppLayout title="Ingreso al sistema">
+  <section class="mx-auto max-w-md animate-rise">
+    <div class="panel px-6 py-6">
+      <p class="text-sm text-slate-500">
+        Ingresa con una cuenta interna del sistema para iniciar el flujo de firma.
+      </p>
+      <form action="/session/login" class="mt-6 space-y-4" method="post">
+        <label class="block text-sm text-slate-600">
+          Correo
+          <input class="field mt-2" name="email" type="email" required />
+        </label>
+        <label class="block text-sm text-slate-600">
+          Contraseña
+          <input class="field mt-2" name="password" type="password" required />
+        </label>
+        {error && (
+          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            Credenciales inválidas o sesión no disponible.
+          </div>
+        )}
+        <button class="button-primary w-full" type="submit">Entrar</button>
+      </form>
+      <div class="mt-6 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+        <p class="font-semibold text-slate-700">Usuarios seed por defecto</p>
+        <p class="mt-2">`admin@firmador.local` / `Admin1234!`</p>
+        <p>`operador@firmador.local` / `Operador1234!`</p>
+      </div>
+    </div>
+  </section>
+</AppLayout>
+
