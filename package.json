@@ -4,17 +4,14 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.6.4",
   "scripts": {
-    "dev": "concurrently -n api,web -c blue,green \"pnpm --filter @firmador/api start:dev\" \"pnpm --filter @firmador/web dev\"",
-    "dev:api": "pnpm --filter @firmador/api start:dev",
-    "dev:web": "pnpm --filter @firmador/web dev",
-    "build": "pnpm --filter @firmador/shared build && pnpm --filter @firmador/api build && pnpm --filter @firmador/web build",
-    "test": "pnpm --filter @firmador/api test && pnpm --filter @firmador/api test:e2e",
-    "lint": "pnpm --filter @firmador/api lint && pnpm --filter @firmador/web check",
-    "format": "pnpm --filter @firmador/api format",
-    "seed": "pnpm --filter @firmador/api seed"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.2"
+    "predev": "node scripts/with-root-env.mjs pnpm --filter @firmador/shared build",
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "node scripts/with-root-env.mjs pnpm --filter @firmador/api start:dev",
+    "dev:web": "node scripts/web-dev.mjs",
+    "build": "node scripts/with-root-env.mjs pnpm --filter @firmador/shared build && node scripts/with-root-env.mjs pnpm --filter @firmador/api build && node scripts/with-root-env.mjs pnpm --filter @firmador/web build",
+    "test": "node scripts/with-root-env.mjs pnpm --filter @firmador/api test && node scripts/with-root-env.mjs pnpm --filter @firmador/api test:e2e",
+    "lint": "node scripts/with-root-env.mjs pnpm --filter @firmador/api lint && node scripts/with-root-env.mjs pnpm --filter @firmador/web check",
+    "format": "node scripts/with-root-env.mjs pnpm --filter @firmador/api format",
+    "seed": "node scripts/with-root-env.mjs pnpm --filter @firmador/api seed"
   }
 }
-

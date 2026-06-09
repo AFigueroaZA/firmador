@@ -1,6 +1,7 @@
 import type {
   ChallengeQuestion,
   ExternalIdentitySummary,
+  PdfMetadata,
   SignOptions,
   SigningProcessStatus,
 } from '@firmador/shared';
@@ -39,6 +40,9 @@ export class SigningProcessEntity {
 
   @Column({ type: 'simple-json' })
   signOptions!: SignOptions;
+
+  @Column({ type: 'simple-json', nullable: true })
+  pdfMetadata!: PdfMetadata | null;
 
   @Column()
   originalStoragePath!: string;

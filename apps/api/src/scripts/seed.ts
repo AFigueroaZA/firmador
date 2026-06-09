@@ -14,4 +14,7 @@ async function run() {
   }
 }
 
-void run();
+void run().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

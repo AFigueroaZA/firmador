@@ -1,7 +1,10 @@
 import type { APIContext } from "astro";
 import type { AuthSession } from "@firmador/shared";
 
-const API_BASE_URL = import.meta.env.API_BASE_URL ?? "http://localhost:3000";
+const API_BASE_URL =
+  process.env.API_BASE_URL ??
+  import.meta.env.API_BASE_URL ??
+  "http://127.0.0.1:3000";
 
 export const apiUrl = (path: string) => new URL(path, API_BASE_URL).toString();
 
@@ -19,7 +22,13 @@ export const serverFetch = (request: Request, path: string, init?: RequestInit) 
 };
 
 export const getSession = async (request: Request): Promise<AuthSession | null> => {
-  const response = await serverFetch(request, "/api/auth/me");
+  let response: Response;
+  try {
+    response = await serverFetch(request, "/api/auth/me");
+  } catch {
+    return null;
+  }
+
   if (!response.ok) {
     return null;
   }
@@ -39,4 +48,3 @@ export const proxyApiResponse = async (
     headers: response.headers,
   });
 };
-

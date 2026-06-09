@@ -20,6 +20,8 @@ export class CertificateClient {
     imageBuffer?: Buffer | null;
   }) {
     const url = `${this.config.providerEsignerUrl}/WSDescargaCertificadoConfPinFirma`;
+    const visibleValue = <T>(value: T | undefined) =>
+      input.signOptions.visible ? value : undefined;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -44,22 +46,26 @@ export class CertificateClient {
         <parametro>
           <rutEmpresa>${xmlEscape(this.config.providerRutEmpresa)}</rutEmpresa>
           <usuarioLogin>${xmlEscape(this.config.providerUsername)}</usuarioLogin>
-          <posicionImagenXInferiorIzquierda>${xmlEscape(input.signOptions.x)}</posicionImagenXInferiorIzquierda>
-          <posicionImagenYInferiorIzquierda>${xmlEscape(input.signOptions.y)}</posicionImagenYInferiorIzquierda>
+          <posicionImagenXInferiorIzquierda>${xmlEscape(visibleValue(input.signOptions.x))}</posicionImagenXInferiorIzquierda>
+          <posicionImagenYInferiorIzquierda>${xmlEscape(visibleValue(input.signOptions.y))}</posicionImagenYInferiorIzquierda>
           <posicionImagenXSuperiorDerecha>${xmlEscape(
-            input.signOptions.x !== undefined &&
+            input.signOptions.visible &&
+              input.signOptions.x !== undefined &&
               input.signOptions.width !== undefined
               ? input.signOptions.x + input.signOptions.width
               : '',
           )}</posicionImagenXSuperiorDerecha>
           <posicionImagenYSuperiorDerecha>${xmlEscape(
-            input.signOptions.y !== undefined &&
+            input.signOptions.visible &&
+              input.signOptions.y !== undefined &&
               input.signOptions.height !== undefined
               ? input.signOptions.y + input.signOptions.height
               : '',
           )}</posicionImagenYSuperiorDerecha>
           <paginaImagen>${xmlEscape(
-            input.signOptions.page ? input.signOptions.page - 1 : '',
+            input.signOptions.visible && input.signOptions.page
+              ? input.signOptions.page - 1
+              : '',
           )}</paginaImagen>
           <codigoQR>false</codigoQR>
           <posicionXCodigoQR></posicionXCodigoQR>
@@ -72,7 +78,9 @@ export class CertificateClient {
           <posicionYSello></posicionYSello>
           <selloDefault></selloDefault>
           <imagenPDFB64>${xmlEscape(
-            input.imageBuffer ? input.imageBuffer.toString('base64') : '',
+            input.signOptions.visible && input.imageBuffer
+              ? input.imageBuffer.toString('base64')
+              : '',
           )}</imagenPDFB64>
         </parametro>
       </requestDescargaConf>

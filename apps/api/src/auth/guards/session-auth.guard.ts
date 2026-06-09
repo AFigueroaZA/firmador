@@ -6,13 +6,16 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from '../auth.service';
+import type { RequestUser } from '../interfaces/request-user.interface';
+
+type AuthenticatedRequest = Request & { user?: RequestUser };
 
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
   constructor(private readonly authService: AuthService) {}
 
   async canActivate(context: ExecutionContext) {
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = await this.authService.authenticateRequest(request);
     if (!user) {
       throw new UnauthorizedException('Authentication required.');

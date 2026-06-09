@@ -26,7 +26,11 @@ import { PdfValidationService } from '../documents/pdf-validation.service';
 import { SealedPayloadService } from '../documents/sealed-payload.service';
 import { ProviderService } from '../provider/provider.service';
 import type { ProviderContext } from '../provider/types';
-import { normalizeSignOptions } from './sign-options';
+import {
+  hasSignOptionFields,
+  normalizeSignOptions,
+  validateSignOptionsForPdf,
+} from './sign-options';
 import { SigningProcessEntity } from './entities/signing-process.entity';
 import { mapProcessToDetail, mapProcessToSummary } from './signing.mapper';
 
@@ -57,11 +61,21 @@ export class SigningService {
       throw new BadRequestException('A PDF file is required.');
     }
 
-    const metadata = this.pdfValidationService.validatePdf(
+    const metadata = await this.pdfValidationService.validatePdf(
       pdfFile.buffer,
       pdfFile.mimetype,
     );
-    const signOptions = normalizeSignOptions(fields, imageFile?.originalname);
+    const hasInitialSignOptions = hasSignOptionFields(fields);
+    const signOptions = hasInitialSignOptions
+      ? normalizeSignOptions(
+          fields,
+          imageFile?.originalname,
+          metadata.pdfMetadata,
+        )
+      : {
+          visible: true,
+          imageFileName: imageFile?.originalname,
+        };
 
     const process = this.processRepository.create({
       userId: requestUser.id,
@@ -71,6 +85,7 @@ export class SigningService {
       sizeBytes: metadata.sizeBytes,
       sha256: metadata.sha256,
       signOptions,
+      pdfMetadata: metadata.pdfMetadata,
       originalStoragePath: '',
       signedStoragePath: null,
       signatureImageStoragePath: null,
@@ -99,7 +114,7 @@ export class SigningService {
       );
     }
 
-    process.status = 'CONFIGURED';
+    process.status = hasInitialSignOptions ? 'CONFIGURED' : 'UPLOADED';
     await this.processRepository.save(process);
 
     await this.auditService.record({
@@ -107,12 +122,15 @@ export class SigningService {
       actorUserId: requestUser.id,
       actor: requestUser.email,
       type: 'PROCESS_CREATED',
-      message: `PDF ${pdfFile.originalname} uploaded and prepared for signing.`,
-      toStatus: 'CONFIGURED',
+      message: hasInitialSignOptions
+        ? `PDF ${pdfFile.originalname} uploaded and prepared for signing.`
+        : `PDF ${pdfFile.originalname} uploaded and awaiting signature placement.`,
+      toStatus: process.status,
       meta: {
         mimeType: metadata.mimeType,
         sizeBytes: metadata.sizeBytes,
         sha256: metadata.sha256,
+        pdfMetadata: metadata.pdfMetadata,
         signOptions,
       },
     });
@@ -134,6 +152,44 @@ export class SigningService {
       .listForProcess(process.id)
       .then((events) => events.length);
     return mapProcessToDetail(process, auditCount);
+  }
+
+  async updateSignOptions(
+    requestUser: RequestUser,
+    processId: string,
+    fields: Record<string, unknown>,
+  ): Promise<SigningProcessDetail> {
+    const process = await this.getAccessibleProcess(requestUser, processId);
+    await this.ensureNotExpired(process);
+
+    if (!['UPLOADED', 'CONFIGURED'].includes(process.status)) {
+      throw new BadRequestException(
+        'Signature placement can only be updated before authorization starts.',
+      );
+    }
+
+    const signOptions = normalizeSignOptions(
+      this.coerceSignOptionFields(fields),
+      process.signOptions.imageFileName ?? undefined,
+      process.pdfMetadata,
+    );
+    const fromStatus = process.status;
+    process.signOptions = signOptions;
+    process.status = 'CONFIGURED';
+    await this.processRepository.save(process);
+
+    await this.auditService.record({
+      processId: process.id,
+      actorUserId: requestUser.id,
+      actor: requestUser.email,
+      type: 'SIGN_OPTIONS_CONFIGURED',
+      message: 'Visible signature placement was configured.',
+      fromStatus,
+      toStatus: process.status,
+      meta: { signOptions },
+    });
+
+    return this.getProcessDetail(requestUser, process.id);
   }
 
   async listProcessSummaries(
@@ -162,6 +218,14 @@ export class SigningService {
   async getAuthorizationUrl(requestUser: RequestUser, processId: string) {
     const process = await this.getAccessibleProcess(requestUser, processId);
     await this.ensureNotExpired(process);
+
+    if (process.status === 'UPLOADED') {
+      throw new BadRequestException(
+        'Configure signature placement before starting authorization.',
+      );
+    }
+
+    validateSignOptionsForPdf(process.signOptions, process.pdfMetadata);
 
     const state = randomUUID();
     const successRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
@@ -399,6 +463,16 @@ export class SigningService {
     };
   }
 
+  async downloadOriginalDocument(requestUser: RequestUser, processId: string) {
+    const process = await this.getAccessibleProcess(requestUser, processId);
+    await this.ensureNotExpired(process);
+
+    return {
+      fileName: process.originalFileName,
+      buffer: await this.fileStore.read(process.originalStoragePath),
+    };
+  }
+
   async getAuditTrail(requestUser: RequestUser, processId: string) {
     const process = await this.getAccessibleProcess(requestUser, processId);
     const events = await this.auditService.listForProcess(process.id);
@@ -434,6 +508,33 @@ export class SigningService {
     }
 
     return process;
+  }
+
+  private coerceSignOptionFields(fields: Record<string, unknown>) {
+    return {
+      visible: this.coerceSignOptionField(fields.visible),
+      page: this.coerceSignOptionField(fields.page),
+      x: this.coerceSignOptionField(fields.x),
+      y: this.coerceSignOptionField(fields.y),
+      width: this.coerceSignOptionField(fields.width),
+      height: this.coerceSignOptionField(fields.height),
+    };
+  }
+
+  private coerceSignOptionField(value: unknown) {
+    if (value === undefined) {
+      return undefined;
+    }
+
+    if (
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean'
+    ) {
+      return String(value);
+    }
+
+    return undefined;
   }
 
   private isExpired(process: SigningProcessEntity) {

@@ -17,6 +17,7 @@ import { SigningModule } from './signing/signing.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
+      envFilePath: ['.env', '../../.env'],
       validate: () => {
         const config = loadAppConfig();
         validateConfig(config);

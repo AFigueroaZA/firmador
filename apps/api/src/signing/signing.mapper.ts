@@ -28,6 +28,7 @@ export const mapProcessToDetail = (
   auditCount: number,
 ): SigningProcessDetail => ({
   ...mapProcessToSummary(process),
+  pdfMetadata: process.pdfMetadata ?? null,
   challenge:
     process.status === 'CHALLENGE_PENDING' ||
     process.status === 'EXTERNAL_AUTH_DONE'

@@ -5,6 +5,7 @@ export const statusToNextStep = (
 ): ProcessNextStep => {
   switch (status) {
     case 'UPLOADED':
+      return 'configure';
     case 'CONFIGURED':
     case 'EXTERNAL_AUTH_PENDING':
       return 'authorize';

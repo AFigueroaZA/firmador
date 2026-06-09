@@ -10,6 +10,7 @@ import type {
 } from '@firmador/shared';
 import cookieParser from 'cookie-parser';
 import type { INestApplication } from '@nestjs/common';
+import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
@@ -19,6 +20,29 @@ describe('Firmador flow (e2e)', () => {
   let app: INestApplication;
   let tempRoot: string;
   let httpServer: Parameters<typeof request>[0];
+
+  const createPdf = async () => {
+    const document = await PDFDocument.create();
+    const page = document.addPage([612, 792]);
+    page.drawText('Demo PDF');
+    return Buffer.from(await document.save());
+  };
+
+  const loginOperator = async () => {
+    const loginResponse = await request(httpServer)
+      .post('/api/auth/login')
+      .send({
+        email: 'operador@firmador.local',
+        password: 'Operador1234!',
+      })
+      .expect(201);
+
+    const cookies = loginResponse.get('Set-Cookie');
+    expect(cookies).toEqual(
+      expect.arrayContaining([expect.stringContaining('firmador_access')]),
+    );
+    return cookies ?? [];
+  };
 
   beforeAll(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), 'firmador-e2e-'));
@@ -60,40 +84,54 @@ describe('Firmador flow (e2e)', () => {
     }
   });
 
-  it('completes the happy path with the mock provider', async () => {
-    const loginResponse = await request(httpServer)
-      .post('/api/auth/login')
-      .send({
-        email: 'operador@firmador.local',
-        password: 'Operador1234!',
-      })
-      .expect(201);
-
-    const cookies = loginResponse.get('Set-Cookie');
-    expect(cookies).toEqual(
-      expect.arrayContaining([expect.stringContaining('firmador_access')]),
-    );
-    const authCookies = cookies ?? [];
+  it('completes the visual placement happy path with the mock provider', async () => {
+    const authCookies = await loginOperator();
+    const originalPdf = await createPdf();
 
     const createResponse = await request(httpServer)
       .post('/api/signing/processes')
       .set('Cookie', authCookies)
-      .field('visible', 'true')
-      .field('page', '1')
-      .field('x', '120')
-      .field('y', '80')
-      .field('width', '160')
-      .field('height', '64')
-      .attach(
-        'pdf',
-        Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF', 'utf8'),
-        'demo.pdf',
-      )
+      .attach('pdf', originalPdf, {
+        filename: 'demo.pdf',
+        contentType: 'application/pdf',
+      })
       .expect(201);
 
     const createBody = createResponse.body as CreateSigningProcessResponse;
     const processId = createBody.processId;
     expect(processId).toBeTruthy();
+    expect(createBody.status).toBe('UPLOADED');
+    expect(createBody.nextStep).toBe('configure');
+
+    await request(httpServer)
+      .get(`/api/signing/processes/${processId}/original`)
+      .set('Cookie', authCookies)
+      .expect(200)
+      .expect('Cache-Control', /no-store/)
+      .expect('Content-Type', /application\/pdf/);
+
+    await request(httpServer)
+      .get(`/api/signing/processes/${processId}/authorize`)
+      .set('Cookie', authCookies)
+      .expect(400);
+
+    const configuredResponse = await request(httpServer)
+      .patch(`/api/signing/processes/${processId}/sign-options`)
+      .set('Cookie', authCookies)
+      .send({
+        visible: true,
+        page: 1,
+        x: 120,
+        y: 80,
+        width: 160,
+        height: 64,
+      })
+      .expect(200);
+
+    const configuredBody = configuredResponse.body as SigningProcessDetail;
+    expect(configuredBody.status).toBe('CONFIGURED');
+    expect(configuredBody.nextStep).toBe('authorize');
+    expect(configuredBody.pdfMetadata?.pageCount).toBe(1);
 
     const authorizeResponse = await request(httpServer)
       .get(`/api/signing/processes/${processId}/authorize`)
@@ -137,10 +175,38 @@ describe('Firmador flow (e2e)', () => {
     const signedBody = signedResponse.body as SigningProcessDetail;
     expect(signedBody.status).toBe('SIGNED');
 
-    await request(httpServer)
+    const downloadResponse = await request(httpServer)
       .get(`/api/signing/processes/${processId}/download`)
       .set('Cookie', authCookies)
       .expect(200)
       .expect('Content-Type', /application\/pdf/);
+
+    const signedPdfBuffer = Buffer.from(downloadResponse.body as Buffer);
+    const signedPdf = await PDFDocument.load(signedPdfBuffer);
+    expect(signedPdf.getPageCount()).toBe(1);
+    expect(signedPdfBuffer.length).toBeGreaterThan(originalPdf.length);
+  });
+
+  it('keeps backward-compatible creation with initial coordinates', async () => {
+    const authCookies = await loginOperator();
+
+    const createResponse = await request(httpServer)
+      .post('/api/signing/processes')
+      .set('Cookie', authCookies)
+      .field('visible', 'true')
+      .field('page', '1')
+      .field('x', '120')
+      .field('y', '80')
+      .field('width', '160')
+      .field('height', '64')
+      .attach('pdf', await createPdf(), {
+        filename: 'legacy-demo.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(201);
+
+    const createBody = createResponse.body as CreateSigningProcessResponse;
+    expect(createBody.status).toBe('CONFIGURED');
+    expect(createBody.nextStep).toBe('authorize');
   });
 });

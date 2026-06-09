@@ -17,6 +17,7 @@ export const SIGNING_PROCESS_STATUSES = [
 export type SigningProcessStatus = (typeof SIGNING_PROCESS_STATUSES)[number];
 
 export type ProcessNextStep =
+  | "configure"
   | "authorize"
   | "challenge"
   | "progress"
@@ -25,12 +26,27 @@ export type ProcessNextStep =
 
 export interface SignOptions {
   visible: boolean;
+  /**
+   * Coordinates are PDF points with a bottom-left origin.
+   */
   page?: number;
   x?: number;
   y?: number;
   width?: number;
   height?: number;
   imageFileName?: string;
+}
+
+export interface PdfPageMetadata {
+  page: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
+
+export interface PdfMetadata {
+  pageCount: number;
+  pages: PdfPageMetadata[];
 }
 
 export interface ChallengeAnswer {
@@ -83,6 +99,7 @@ export interface SigningProcessSummary {
 }
 
 export interface SigningProcessDetail extends SigningProcessSummary {
+  pdfMetadata?: PdfMetadata | null;
   challenge?: {
     idChallenge: string;
     questions: ChallengeQuestion[];

@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Res,
   UploadedFiles,
@@ -15,6 +16,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/interfaces/request-user.interface';
 import { SessionAuthGuard } from '../auth/guards/session-auth.guard';
 import { ChallengePayloadDto } from './dto/challenge-payload.dto';
+import { SignOptionsDto } from './dto/sign-options.dto';
 import { SigningService } from './signing.service';
 
 @Controller('api/signing')
@@ -69,6 +71,17 @@ export class SigningController {
     return this.signingService.getAuthorizationUrl(requestUser, processId);
   }
 
+  @Patch('processes/:id/sign-options')
+  async updateSignOptions(
+    @CurrentUser() requestUser: RequestUser,
+    @Param('id') processId: string,
+    @Body() body: SignOptionsDto,
+  ) {
+    return this.signingService.updateSignOptions(requestUser, processId, {
+      ...body,
+    });
+  }
+
   @Post('processes/:id/challenge')
   async submitChallenge(
     @CurrentUser() requestUser: RequestUser,
@@ -95,6 +108,25 @@ export class SigningController {
     response.setHeader(
       'Content-Disposition',
       `attachment; filename="${result.fileName}"`,
+    );
+    return response.send(result.buffer);
+  }
+
+  @Get('processes/:id/original')
+  async downloadOriginalDocument(
+    @CurrentUser() requestUser: RequestUser,
+    @Param('id') processId: string,
+    @Res() response: Response,
+  ) {
+    const result = await this.signingService.downloadOriginalDocument(
+      requestUser,
+      processId,
+    );
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader(
+      'Content-Disposition',
+      `inline; filename="${result.fileName}"`,
     );
     return response.send(result.buffer);
   }

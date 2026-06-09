@@ -5,6 +5,7 @@ import type {
   ExternalIdentitySummary,
   SignOptions,
 } from '@firmador/shared';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { loadAppConfig } from '../config/app.config';
 import { CertificateClient } from './clients/certificate.client';
 import { ChallengeClient } from './clients/challenge.client';
@@ -274,10 +275,11 @@ export class ProviderService {
   }): Promise<SignDocumentResult> {
     if (this.config.signingProviderMode === 'mock') {
       return {
-        signedPdfBuffer: Buffer.concat([
+        signedPdfBuffer: await this.createMockSignedPdf(
           input.pdfBuffer,
-          Buffer.from('\n% Firmador mock signature\n', 'utf8'),
-        ]),
+          input.signOptions,
+          input.imageBuffer,
+        ),
         providerContext: input.providerContext,
         auditMeta: { provider: 'mock', stage: 'signing' },
       };
@@ -296,5 +298,83 @@ export class ProviderService {
       providerContext: input.providerContext,
       auditMeta: { provider: 'live', stage: 'signing', raw: result.raw },
     };
+  }
+
+  private async createMockSignedPdf(
+    pdfBuffer: Buffer,
+    signOptions: SignOptions,
+    imageBuffer?: Buffer | null,
+  ) {
+    const pdfDocument = await PDFDocument.load(pdfBuffer, {
+      ignoreEncryption: true,
+    });
+
+    if (
+      signOptions.visible &&
+      signOptions.page !== undefined &&
+      signOptions.x !== undefined &&
+      signOptions.y !== undefined &&
+      signOptions.width !== undefined &&
+      signOptions.height !== undefined
+    ) {
+      const page = pdfDocument.getPage(signOptions.page - 1);
+      const font = await pdfDocument.embedFont(StandardFonts.HelveticaBold);
+
+      page.drawRectangle({
+        x: signOptions.x,
+        y: signOptions.y,
+        width: signOptions.width,
+        height: signOptions.height,
+        color: rgb(0.9, 0.96, 1),
+        borderColor: rgb(0.06, 0.43, 0.75),
+        borderWidth: 1.5,
+        opacity: 0.45,
+      });
+
+      const embeddedImage = imageBuffer
+        ? await this.tryEmbedMockImage(pdfDocument, imageBuffer)
+        : null;
+      if (embeddedImage) {
+        const imageScale = Math.min(
+          signOptions.width / embeddedImage.width,
+          signOptions.height / embeddedImage.height,
+        );
+        const imageWidth = embeddedImage.width * imageScale;
+        const imageHeight = embeddedImage.height * imageScale;
+        page.drawImage(embeddedImage, {
+          x: signOptions.x + (signOptions.width - imageWidth) / 2,
+          y: signOptions.y + (signOptions.height - imageHeight) / 2,
+          width: imageWidth,
+          height: imageHeight,
+        });
+      } else {
+        const text = 'Firmado mock';
+        page.drawText(text, {
+          x: signOptions.x + 8,
+          y: signOptions.y + Math.max(8, signOptions.height / 2 - 5),
+          size: Math.min(12, Math.max(8, signOptions.height / 5)),
+          font,
+          color: rgb(0.06, 0.43, 0.75),
+        });
+      }
+    }
+
+    const signedBytes = await pdfDocument.save({ useObjectStreams: false });
+    return Buffer.from(signedBytes);
+  }
+
+  private async tryEmbedMockImage(
+    pdfDocument: PDFDocument,
+    imageBuffer: Buffer,
+  ) {
+    try {
+      return await pdfDocument.embedPng(imageBuffer);
+    } catch {
+      try {
+        return await pdfDocument.embedJpg(imageBuffer);
+      } catch {
+        return null;
+      }
+    }
   }
 }

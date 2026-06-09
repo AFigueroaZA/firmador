@@ -1,4 +1,5 @@
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { isAbsolute, join, resolve } from 'node:path';
 
 export interface AppConfig {
   apiPort: number;
@@ -41,6 +42,18 @@ const asBoolean = (value: string | undefined, fallback = false) => {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 };
 
+const workspaceRoot = () => {
+  const currentDirectory = process.cwd();
+  return existsSync(join(currentDirectory, 'apps', 'api'))
+    ? currentDirectory
+    : resolve(currentDirectory, '..', '..');
+};
+
+const resolveWorkspacePath = (value: string | undefined, fallback: string) => {
+  const path = value?.trim() || fallback;
+  return isAbsolute(path) ? path : resolve(workspaceRoot(), path);
+};
+
 export const loadAppConfig = (): AppConfig => {
   const apiPort = Number.parseInt(process.env.API_PORT ?? '3000', 10);
   const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${apiPort}`;
@@ -53,7 +66,10 @@ export const loadAppConfig = (): AppConfig => {
     corsOrigin: process.env.CORS_ORIGIN ?? webBaseUrl,
     databaseUrl: process.env.DATABASE_URL,
     databaseSynchronize: asBoolean(process.env.DATABASE_SYNCHRONIZE, true),
-    storageRoot: process.env.STORAGE_ROOT ?? join(process.cwd(), 'storage'),
+    storageRoot: resolveWorkspacePath(
+      process.env.STORAGE_ROOT,
+      'apps/api/storage',
+    ),
     tempFileTtlHours: Number.parseInt(
       process.env.TEMP_FILE_TTL_HOURS ?? '24',
       10,
