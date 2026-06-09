@@ -5,6 +5,7 @@ import type {
   SignOptions,
   SigningProcessStatus,
 } from '@firmador/shared';
+import type { ExternalProfileOverrides } from '../../provider/types';
 import { randomUUID } from 'node:crypto';
 import {
   BeforeInsert,
@@ -58,6 +59,9 @@ export class SigningProcessEntity {
 
   @Column({ type: 'simple-json', nullable: true })
   externalIdentity!: ExternalIdentitySummary | null;
+
+  @Column({ type: 'simple-json', nullable: true })
+  externalProfileOverrides!: ExternalProfileOverrides | null;
 
   @Column({ type: 'text', nullable: true })
   providerContextEncrypted!: string | null;

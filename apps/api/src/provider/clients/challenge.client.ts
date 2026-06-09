@@ -12,9 +12,17 @@ import {
 export class ChallengeClient {
   private readonly config = loadAppConfig();
 
+  private readonly apiHeaders = {
+    'X-API-APP': this.config.providerUsername,
+    'X-API-KEY': this.config.providerPassword,
+  };
+
   async generateToken() {
     const response = await fetch(
       `${this.config.providerChallengeBaseUrl}/tokens/generarToken`,
+      {
+        headers: this.apiHeaders,
+      },
     );
     const rawText = await response.text();
     if (!response.ok) {
@@ -41,19 +49,19 @@ export class ChallengeClient {
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${bearerToken}`,
+          ...this.apiHeaders,
+          'Content-Type': 'application/json;charset=UTF-8',
+          Authorization: this.authorizationHeader(bearerToken),
         },
         body: JSON.stringify(profile),
       },
     );
-    const data = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = await this.parseProviderResponse(response);
 
     if (!response.ok) {
-      throw new BadGatewayException('Challenge creation failed.');
+      throw new BadGatewayException(
+        `Challenge creation failed with status ${response.status}.`,
+      );
     }
 
     const idChallenge =
@@ -82,8 +90,9 @@ export class ChallengeClient {
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${bearerToken}`,
+          ...this.apiHeaders,
+          'Content-Type': 'application/json;charset=UTF-8',
+          Authorization: this.authorizationHeader(bearerToken),
         },
         body: JSON.stringify({
           idChallenge: payload.idChallenge,
@@ -94,13 +103,12 @@ export class ChallengeClient {
         }),
       },
     );
-    const data = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = await this.parseProviderResponse(response);
 
     if (!response.ok) {
-      throw new BadGatewayException('Challenge verification failed.');
+      throw new BadGatewayException(
+        `Challenge verification failed with status ${response.status}.`,
+      );
     }
 
     const resultValue = coerceString(
@@ -116,5 +124,24 @@ export class ChallengeClient {
       ),
       raw: data,
     };
+  }
+
+  private authorizationHeader(token: string) {
+    return token.toLowerCase().startsWith('bearer ')
+      ? token
+      : `Bearer ${token}`;
+  }
+
+  private async parseProviderResponse(response: Response): Promise<unknown> {
+    const text = await response.text();
+    if (!text) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return text.trim();
+    }
   }
 }

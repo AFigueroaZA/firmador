@@ -17,6 +17,13 @@ export interface ExternalProfile extends Record<string, unknown> {
   telefono?: string;
 }
 
+export interface ExternalProfileOverrides extends Record<string, unknown> {
+  numeroDocumento?: string;
+  fechaNacimiento?: string;
+  estadoCivil?: string;
+  telefono?: string;
+}
+
 export interface ProviderContext extends Record<string, unknown> {
   claveCode?: string;
   claveAccessToken?: string;
@@ -28,6 +35,7 @@ export interface ProviderContext extends Record<string, unknown> {
   pinFirma?: string;
   configurationName?: string;
   externalProfile?: ExternalProfile;
+  externalProfileOverrides?: ExternalProfileOverrides;
 }
 
 export interface AuthorizationResult {

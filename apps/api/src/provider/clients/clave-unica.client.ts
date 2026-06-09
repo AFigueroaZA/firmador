@@ -10,6 +10,11 @@ import {
 export class ClaveUnicaClient {
   private readonly config = loadAppConfig();
 
+  private readonly apiHeaders = {
+    'X-API-APP': this.config.providerUsername,
+    'X-API-KEY': this.config.providerPassword,
+  };
+
   async requestAuthorizationCode(input: {
     successRedirect: string;
     failedRedirect: string;
@@ -18,17 +23,19 @@ export class ClaveUnicaClient {
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/tokens/request`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+        headers: {
+          ...this.apiHeaders,
+          'Content-Type': 'application/json;charset=UTF-8',
+        },
         body: JSON.stringify(input),
       },
     );
 
-    const data = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = await this.parseProviderResponse(response);
     if (!response.ok) {
-      throw new BadGatewayException('ClaveUnica authorization request failed.');
+      throw new BadGatewayException(
+        `ClaveUnica authorization request failed with status ${response.status}.`,
+      );
     }
 
     const code =
@@ -39,15 +46,42 @@ export class ClaveUnicaClient {
       );
     }
 
-    const redirectUrl =
-      coerceString(
-        deepFindValue(data, ['authorizationUrl', 'url', 'redirectUrl']),
-      ) ??
+    const authResponse = await fetch(
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/tokens/${encodeURIComponent(
         code,
-      )}/authorize`;
+      )}/authorize`,
+      {
+        method: 'POST',
+        headers: this.apiHeaders,
+      },
+    );
+    const authData = await this.parseProviderResponse(authResponse);
+    if (!authResponse.ok) {
+      throw new BadGatewayException(
+        `ClaveUnica authorization URL request failed with status ${authResponse.status}.`,
+      );
+    }
 
-    return { code, redirectUrl, raw: data };
+    const redirectUrl =
+      coerceString(
+        deepFindValue(authData, [
+          'authorizationUrl',
+          'url',
+          'redirectUrl',
+          'uri',
+          'location',
+        ]),
+      ) ??
+      coerceString(authData) ??
+      '';
+
+    if (!redirectUrl) {
+      throw new BadGatewayException(
+        'ClaveUnica did not return an authorization URL.',
+      );
+    }
+
+    return { code, redirectUrl, raw: { token: data, authorization: authData } };
   }
 
   async exchangeToken(code: string) {
@@ -56,16 +90,18 @@ export class ClaveUnicaClient {
         code,
       )}`,
       {
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+        headers: {
+          ...this.apiHeaders,
+          'Content-Type': 'application/json;charset=UTF-8',
+        },
       },
     );
-    const data = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = await this.parseProviderResponse(response);
 
     if (!response.ok) {
-      throw new BadGatewayException('ClaveUnica access token exchange failed.');
+      throw new BadGatewayException(
+        `ClaveUnica access token exchange failed with status ${response.status}.`,
+      );
     }
 
     const accessToken =
@@ -87,22 +123,37 @@ export class ClaveUnicaClient {
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/users/info`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+        headers: {
+          ...this.apiHeaders,
+          'Content-Type': 'application/json;charset=UTF-8',
+        },
         body: JSON.stringify(input),
       },
     );
-    const data = (await response.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
+    const data = await this.parseProviderResponse(response);
 
     if (!response.ok) {
-      throw new BadGatewayException('ClaveUnica user lookup failed.');
+      throw new BadGatewayException(
+        `ClaveUnica user lookup failed with status ${response.status}.`,
+      );
     }
 
     return {
       profile: normalizeExternalProfile(data),
       raw: data,
     };
+  }
+
+  private async parseProviderResponse(response: Response): Promise<unknown> {
+    const text = await response.text();
+    if (!text) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return text.trim();
+    }
   }
 }

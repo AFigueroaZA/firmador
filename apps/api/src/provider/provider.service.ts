@@ -14,6 +14,7 @@ import { DocumentExchangeClient } from './clients/document-exchange.client';
 import { RaClient } from './clients/ra.client';
 import type {
   AuthorizationCompletionResult,
+  ExternalProfile,
   AuthorizationResult,
   ProviderContext,
   ProviderStageResult,
@@ -112,9 +113,14 @@ export class ProviderService {
       accessToken: tokenResult.accessToken,
       code: callbackCode,
     });
+    const externalProfile = this.mergeExternalProfileOverrides(
+      userInfo.profile,
+      input.providerContext?.externalProfileOverrides,
+    );
+    this.assertChallengeProfileComplete(externalProfile);
     const challengeToken = await this.challengeClient.generateToken();
     const challenge = await this.challengeClient.createChallenge(
-      userInfo.profile,
+      externalProfile,
       challengeToken.token,
     );
 
@@ -122,13 +128,13 @@ export class ProviderService {
       identity: {
         run: userInfo.profile.rut,
         fullName: [
-          userInfo.profile.nombres,
-          userInfo.profile.apellidoPaterno,
-          userInfo.profile.apellidoMaterno,
+          externalProfile.nombres,
+          externalProfile.apellidoPaterno,
+          externalProfile.apellidoMaterno,
         ]
           .filter(Boolean)
           .join(' '),
-        email: userInfo.profile.email,
+        email: externalProfile.email,
       },
       challenge: {
         idChallenge: challenge.idChallenge,
@@ -141,7 +147,7 @@ export class ProviderService {
         challengeToken: challengeToken.token,
         idChallenge: challenge.idChallenge,
         idValidation: challenge.idValidation,
-        externalProfile: userInfo.profile,
+        externalProfile,
       },
       auditMeta: {
         provider: 'live',
@@ -375,6 +381,44 @@ export class ProviderService {
       } catch {
         return null;
       }
+    }
+  }
+
+  private mergeExternalProfileOverrides(
+    profile: ExternalProfile,
+    overrides: ProviderContext['externalProfileOverrides'],
+  ): ExternalProfile {
+    if (!overrides) {
+      return profile;
+    }
+
+    return {
+      ...profile,
+      numeroDocumento: overrides.numeroDocumento ?? profile.numeroDocumento,
+      fechaNacimiento: overrides.fechaNacimiento ?? profile.fechaNacimiento,
+      estadoCivil: overrides.estadoCivil ?? profile.estadoCivil,
+      telefono: overrides.telefono ?? profile.telefono,
+    };
+  }
+
+  private assertChallengeProfileComplete(profile: ExternalProfile) {
+    const requiredFields: Array<keyof ExternalProfile> = [
+      'rut',
+      'numeroDocumento',
+      'nombres',
+      'apellidoPaterno',
+      'apellidoMaterno',
+      'email',
+      'fechaNacimiento',
+      'estadoCivil',
+      'telefono',
+    ];
+    const missing = requiredFields.filter((field) => !profile[field]);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Challenge profile is incomplete. Missing fields: ${missing.join(', ')}.`,
+      );
     }
   }
 }

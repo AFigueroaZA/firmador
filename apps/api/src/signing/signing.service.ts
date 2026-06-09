@@ -25,7 +25,10 @@ import { EncryptedFileStoreService } from '../documents/encrypted-file-store.ser
 import { PdfValidationService } from '../documents/pdf-validation.service';
 import { SealedPayloadService } from '../documents/sealed-payload.service';
 import { ProviderService } from '../provider/provider.service';
-import type { ProviderContext } from '../provider/types';
+import type {
+  ExternalProfileOverrides,
+  ProviderContext,
+} from '../provider/types';
 import {
   hasSignOptionFields,
   normalizeSignOptions,
@@ -66,6 +69,8 @@ export class SigningService {
       pdfFile.mimetype,
     );
     const hasInitialSignOptions = hasSignOptionFields(fields);
+    const externalProfileOverrides =
+      this.normalizeExternalProfileOverrides(fields);
     const signOptions = hasInitialSignOptions
       ? normalizeSignOptions(
           fields,
@@ -91,6 +96,7 @@ export class SigningService {
       signatureImageStoragePath: null,
       externalAuthState: null,
       externalIdentity: null,
+      externalProfileOverrides,
       providerContextEncrypted: null,
       challenge: null,
       errorMessage: null,
@@ -132,6 +138,12 @@ export class SigningService {
         sha256: metadata.sha256,
         pdfMetadata: metadata.pdfMetadata,
         signOptions,
+        identityFields: Object.fromEntries(
+          Object.entries(externalProfileOverrides ?? {}).map(([key, value]) => [
+            key,
+            Boolean(value),
+          ]),
+        ),
       },
     });
 
@@ -243,9 +255,10 @@ export class SigningService {
     });
 
     process.externalAuthState = state;
-    process.providerContextEncrypted = this.sealedPayloadService.sealJson(
-      (result.providerContext ?? {}) as Record<string, unknown>,
-    );
+    process.providerContextEncrypted = this.sealedPayloadService.sealJson({
+      ...((result.providerContext ?? {}) as Record<string, unknown>),
+      externalProfileOverrides: process.externalProfileOverrides ?? undefined,
+    });
     const fromStatus = process.status;
     process.status = 'EXTERNAL_AUTH_PENDING';
     await this.processRepository.save(process);
@@ -519,6 +532,26 @@ export class SigningService {
       width: this.coerceSignOptionField(fields.width),
       height: this.coerceSignOptionField(fields.height),
     };
+  }
+
+  private normalizeExternalProfileOverrides(
+    fields: Record<string, string | undefined>,
+  ): ExternalProfileOverrides | null {
+    const overrides: ExternalProfileOverrides = {};
+
+    const setString = (key: keyof ExternalProfileOverrides) => {
+      const value = fields[key]?.trim();
+      if (value) {
+        overrides[key] = value;
+      }
+    };
+
+    setString('numeroDocumento');
+    setString('fechaNacimiento');
+    setString('estadoCivil');
+    setString('telefono');
+
+    return Object.keys(overrides).length > 0 ? overrides : null;
   }
 
   private coerceSignOptionField(value: unknown) {

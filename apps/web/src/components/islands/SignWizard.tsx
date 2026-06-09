@@ -33,6 +33,10 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [numeroDocumento, setNumeroDocumento] = useState("");
+  const [fechaNacimiento, setFechaNacimiento] = useState("");
+  const [estadoCivil, setEstadoCivil] = useState("");
+  const [telefono, setTelefono] = useState("");
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [page, setPage] = useState(1);
@@ -214,6 +218,18 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
     if (imageFile) {
       formData.set("imageFile", imageFile);
     }
+    if (numeroDocumento.trim()) {
+      formData.set("numeroDocumento", numeroDocumento.trim());
+    }
+    if (fechaNacimiento.trim()) {
+      formData.set("fechaNacimiento", fechaNacimiento.trim());
+    }
+    if (estadoCivil.trim()) {
+      formData.set("estadoCivil", estadoCivil.trim());
+    }
+    if (telefono.trim()) {
+      formData.set("telefono", telefono.trim());
+    }
 
     try {
       const createResponse = await fetch(createEndpoint, {
@@ -322,6 +338,50 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
             onChange={(event) => setVisible(event.target.checked)}
           />
         </label>
+
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <p className="text-sm font-semibold text-slate-700">
+            Datos para validacion de identidad
+          </p>
+          <label className="text-sm text-slate-600">
+            Numero de documento
+            <input
+              className="field mt-2"
+              placeholder="Ej: 123456789"
+              value={numeroDocumento}
+              onChange={(event) => setNumeroDocumento(event.target.value)}
+            />
+          </label>
+          <label className="text-sm text-slate-600">
+            Fecha de nacimiento
+            <input
+              className="field mt-2"
+              placeholder="DD-MM-AAAA"
+              value={fechaNacimiento}
+              onChange={(event) => setFechaNacimiento(event.target.value)}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm text-slate-600">
+              Estado civil
+              <input
+                className="field mt-2"
+                placeholder="Soltero"
+                value={estadoCivil}
+                onChange={(event) => setEstadoCivil(event.target.value)}
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Telefono
+              <input
+                className="field mt-2"
+                placeholder="912341234"
+                value={telefono}
+                onChange={(event) => setTelefono(event.target.value)}
+              />
+            </label>
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm text-slate-600">
