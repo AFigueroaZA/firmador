@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 import { ValidationPipe } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type {
@@ -20,6 +21,7 @@ describe('Firmador flow (e2e)', () => {
   let app: INestApplication;
   let tempRoot: string;
   let httpServer: Parameters<typeof request>[0];
+  let operatorPassword: string;
 
   const createPdf = async () => {
     const document = await PDFDocument.create();
@@ -33,7 +35,7 @@ describe('Firmador flow (e2e)', () => {
       .post('/api/auth/login')
       .send({
         email: 'operador@firmador.local',
-        password: 'Operador1234!',
+        password: operatorPassword,
       })
       .expect(201);
 
@@ -47,17 +49,18 @@ describe('Firmador flow (e2e)', () => {
   beforeAll(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), 'firmador-e2e-'));
     process.env.STORAGE_ROOT = join(tempRoot, 'storage');
-    process.env.JWT_ACCESS_SECRET = 'test-access-secret';
-    process.env.JWT_REFRESH_SECRET = 'test-refresh-secret';
-    process.env.ENCRYPTION_KEY = 'test-encryption-key';
+    process.env.JWT_ACCESS_SECRET = randomUUID();
+    process.env.JWT_REFRESH_SECRET = randomUUID();
+    process.env.ENCRYPTION_KEY = randomUUID();
     process.env.SIGNING_PROVIDER_MODE = 'mock';
     process.env.WEB_BASE_URL = 'http://localhost:4321';
     process.env.API_BASE_URL = 'http://localhost:3000';
     process.env.SQLITE_LOCATION = join(tempRoot, 'firmador.sqlite');
     process.env.SEED_ADMIN_EMAIL = 'admin@firmador.local';
-    process.env.SEED_ADMIN_PASSWORD = 'Admin1234!';
+    process.env.SEED_ADMIN_PASSWORD = randomUUID();
     process.env.SEED_OPERATOR_EMAIL = 'operador@firmador.local';
-    process.env.SEED_OPERATOR_PASSWORD = 'Operador1234!';
+    operatorPassword = randomUUID();
+    process.env.SEED_OPERATOR_PASSWORD = operatorPassword;
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],

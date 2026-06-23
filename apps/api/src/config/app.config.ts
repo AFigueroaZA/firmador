@@ -42,6 +42,11 @@ const asBoolean = (value: string | undefined, fallback = false) => {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 };
 
+const env = (name: string) => {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+};
+
 const workspaceRoot = () => {
   const currentDirectory = process.cwd();
   return existsSync(join(currentDirectory, 'apps', 'api'))
@@ -74,14 +79,10 @@ export const loadAppConfig = (): AppConfig => {
       process.env.TEMP_FILE_TTL_HOURS ?? '24',
       10,
     ),
-    encryptionKey:
-      process.env.ENCRYPTION_KEY ??
-      'firmador-dev-encryption-key-change-me-before-production',
+    encryptionKey: env('ENCRYPTION_KEY') ?? '',
     cookieSecure: asBoolean(process.env.COOKIE_SECURE, false),
-    jwtAccessSecret:
-      process.env.JWT_ACCESS_SECRET ?? 'firmador-dev-access-secret-change-me',
-    jwtRefreshSecret:
-      process.env.JWT_REFRESH_SECRET ?? 'firmador-dev-refresh-secret-change-me',
+    jwtAccessSecret: env('JWT_ACCESS_SECRET') ?? '',
+    jwtRefreshSecret: env('JWT_REFRESH_SECRET') ?? '',
     jwtAccessTtl: process.env.JWT_ACCESS_TTL ?? '2h',
     jwtRefreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
     signingProviderMode:
@@ -102,17 +103,16 @@ export const loadAppConfig = (): AppConfig => {
     providerEsignerUrl:
       process.env.PROVIDER_ESIGNER_URL ??
       'https://ws.esigner.cl:8543/esign-orq',
-    providerOrigin: process.env.PROVIDER_ORIGIN ?? 'reddata_idyfdd',
+    providerOrigin: env('PROVIDER_ORIGIN') ?? '',
     providerRutEmpresa: process.env.PROVIDER_RUT_EMPRESA ?? '',
     providerUsername: process.env.PROVIDER_USERNAME ?? '',
     providerPassword: process.env.PROVIDER_PASSWORD ?? '',
     providerCertDownloadUser: process.env.PROVIDER_CERT_DOWNLOAD_USER ?? '',
     providerCertDownloadPassword:
       process.env.PROVIDER_CERT_DOWNLOAD_PASSWORD ?? '',
-    providerPinFirma: process.env.PROVIDER_PIN_FIRMA ?? '1234',
+    providerPinFirma: env('PROVIDER_PIN_FIRMA') ?? '',
     providerCertType: process.env.PROVIDER_CERT_TYPE ?? 'FEA',
-    defaultCertificatePassword:
-      process.env.DEFAULT_CERTIFICATE_PASSWORD ?? '1234',
+    defaultCertificatePassword: env('DEFAULT_CERTIFICATE_PASSWORD') ?? '',
     certificateValidityDays: Number.parseInt(
       process.env.CERTIFICATE_VALIDITY_DAYS ?? '365',
       10,

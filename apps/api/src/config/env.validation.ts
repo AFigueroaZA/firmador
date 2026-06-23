@@ -16,6 +16,9 @@ export const validateConfig = (config: AppConfig) => {
       ['PROVIDER_CERT_DOWNLOAD_USER', config.providerCertDownloadUser],
       ['PROVIDER_CERT_DOWNLOAD_PASSWORD', config.providerCertDownloadPassword],
       ['PROVIDER_RUT_EMPRESA', config.providerRutEmpresa],
+      ['PROVIDER_ORIGIN', config.providerOrigin],
+      ['PROVIDER_PIN_FIRMA', config.providerPinFirma],
+      ['DEFAULT_CERTIFICATE_PASSWORD', config.defaultCertificatePassword],
     ];
 
     const missing = required

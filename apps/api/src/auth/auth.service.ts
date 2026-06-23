@@ -34,15 +34,16 @@ export class AuthService {
       return;
     }
 
+    const seedConfig = this.getSeedUserConfig();
     await this.createSeedUser(
-      process.env.SEED_ADMIN_EMAIL ?? 'admin@firmador.local',
-      process.env.SEED_ADMIN_PASSWORD ?? 'Admin1234!',
+      seedConfig.adminEmail,
+      seedConfig.adminPassword,
       'Administrador Firmador',
       'admin',
     );
     await this.createSeedUser(
-      process.env.SEED_OPERATOR_EMAIL ?? 'operador@firmador.local',
-      process.env.SEED_OPERATOR_PASSWORD ?? 'Operador1234!',
+      seedConfig.operatorEmail,
+      seedConfig.operatorPassword,
       'Operador Firmador',
       'operator',
     );
@@ -168,6 +169,35 @@ export class AuthService {
       refreshTokenHash: null,
     });
     await this.userRepository.save(entity);
+  }
+
+  private getSeedUserConfig() {
+    const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim();
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+    const operatorEmail = process.env.SEED_OPERATOR_EMAIL?.trim();
+    const operatorPassword = process.env.SEED_OPERATOR_PASSWORD;
+
+    const missing = [
+      ['SEED_ADMIN_EMAIL', adminEmail],
+      ['SEED_ADMIN_PASSWORD', adminPassword],
+      ['SEED_OPERATOR_EMAIL', operatorEmail],
+      ['SEED_OPERATOR_PASSWORD', operatorPassword],
+    ]
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing seed user configuration: ${missing.join(', ')}.`,
+      );
+    }
+
+    return {
+      adminEmail: adminEmail as string,
+      adminPassword: adminPassword as string,
+      operatorEmail: operatorEmail as string,
+      operatorPassword: operatorPassword as string,
+    };
   }
 
   private async issueSession(user: UserEntity, response: Response) {
