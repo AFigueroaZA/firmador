@@ -48,6 +48,46 @@ No dejes contrasenas seed en codigo, README, pantallas o commits. En entornos co
 
 El monorepo se configura desde `.env` en la raiz. Los scripts raiz cargan ese archivo antes de iniciar API, web, seed, tests y builds. `.env` esta ignorado por Git; `.env.example` documenta las claves necesarias sin valores sensibles.
 
+Referencia de variables:
+
+| Variable | Descripcion |
+| --- | --- |
+| `API_PORT` | Puerto HTTP en el que escucha la API NestJS. Por defecto `3000`. |
+| `API_BASE_URL` | URL base publica de la API. La API la usa para callbacks del proveedor y la web la usa para llamar al backend. |
+| `WEB_BASE_URL` | URL base publica de la web. La API la usa para redirigir al usuario al finalizar flujos de identidad o firma. |
+| `CORS_ORIGIN` | Origen permitido por CORS para llamadas desde la web. Si no se define, usa `WEB_BASE_URL`. |
+| `COOKIE_SECURE` | Define si las cookies de sesion se emiten con flag `Secure`. Usar `true` cuando el sitio corre sobre HTTPS. |
+| `JWT_ACCESS_SECRET` | Secreto para firmar tokens JWT de acceso. Es obligatorio y debe ser un valor largo y privado. |
+| `JWT_REFRESH_SECRET` | Secreto para firmar tokens JWT de refresco. Es obligatorio y debe ser distinto al secreto de acceso. |
+| `JWT_ACCESS_TTL` | Tiempo de vida del token de acceso, por ejemplo `2h`. |
+| `JWT_REFRESH_TTL` | Tiempo de vida del token de refresco, por ejemplo `7d`. |
+| `ENCRYPTION_KEY` | Clave usada para derivar la llave AES-256-GCM que cifra PDFs y payloads persistidos. Es obligatoria. |
+| `SIGNING_PROVIDER_MODE` | Modo del proveedor de firma. `mock` usa respuestas simuladas; `live` llama al proveedor real y exige sus credenciales. |
+| `TEMP_FILE_TTL_HOURS` | Horas durante las que un proceso de firma conserva archivos temporales antes de considerarlos expirados. |
+| `STORAGE_ROOT` | Directorio donde la API guarda archivos cifrados de procesos de firma. Las rutas relativas se resuelven desde la raiz del workspace. |
+| `DATABASE_SYNCHRONIZE` | Activa `synchronize` de TypeORM cuando se usa Postgres con `DATABASE_URL`. En desarrollo puede ser `true`; en produccion deberia revisarse antes de habilitarse. |
+| `DATABASE_URL` | Cadena de conexion Postgres. Si se omite, la API usa `sqljs` con almacenamiento local. |
+| `SQLITE_LOCATION` | Ruta del archivo usado por `sqljs` cuando no hay `DATABASE_URL`. Si se omite, usa `apps/api/data/firmador.sqlite`. |
+| `PROVIDER_ALLOW_INSECURE_TLS` | Flag para permitir TLS inseguro en integraciones del proveedor cuando sea necesario para ambientes no productivos. Por defecto `false`. |
+| `PROVIDER_CLAVE_UNICA_BASE_URL` | URL base de los endpoints REST de Clave Unica del proveedor. |
+| `PROVIDER_CHALLENGE_BASE_URL` | URL base de los endpoints REST de validacion por challenge del proveedor. |
+| `PROVIDER_RA_URL` | Endpoint SOAP de RA usado para ingresar solicitudes de certificado. |
+| `PROVIDER_ESIGNER_URL` | URL base SOAP de eSigner usada para descargar/configurar certificados y firmar documentos. |
+| `PROVIDER_ORIGIN` | Codigo de origen enviado al proveedor al crear una solicitud RA. Obligatorio en modo `live`. |
+| `PROVIDER_RUT_EMPRESA` | RUT de la empresa enviado al proveedor para operaciones de certificado. Obligatorio en modo `live`. |
+| `PROVIDER_USERNAME` | Usuario o identificador de aplicacion del proveedor. Se envia en headers REST y solicitudes SOAP. Obligatorio en modo `live`. |
+| `PROVIDER_PASSWORD` | Clave/API key asociada a `PROVIDER_USERNAME`. Obligatoria en modo `live`. |
+| `PROVIDER_CERT_DOWNLOAD_USER` | Usuario especifico para descargar y configurar certificados en eSigner. Obligatorio en modo `live`. |
+| `PROVIDER_CERT_DOWNLOAD_PASSWORD` | Clave del usuario de descarga/configuracion de certificados. Obligatoria en modo `live`. |
+| `PROVIDER_PIN_FIRMA` | PIN de firma enviado al proveedor para configurar y ejecutar la firma. Obligatorio en modo `live`. |
+| `PROVIDER_CERT_TYPE` | Tipo de certificado solicitado al proveedor. Por defecto `FEA`. |
+| `DEFAULT_CERTIFICATE_PASSWORD` | Contrasena asignada al certificado solicitado/descargado. Obligatoria en modo `live`. |
+| `CERTIFICATE_VALIDITY_DAYS` | Vigencia del certificado, en dias, enviada a RA. Por defecto `365`. |
+| `SEED_ADMIN_EMAIL` | Email del usuario administrador inicial creado por el seed/bootstrap cuando la base esta vacia. |
+| `SEED_ADMIN_PASSWORD` | Contrasena del administrador inicial. Es obligatoria para seed/bootstrap y no debe versionarse con valores reales. |
+| `SEED_OPERATOR_EMAIL` | Email del usuario operador inicial creado por el seed/bootstrap cuando la base esta vacia. |
+| `SEED_OPERATOR_PASSWORD` | Contrasena del operador inicial. Es obligatoria para seed/bootstrap y no debe versionarse con valores reales. |
+
 ## Plantillas `.env.example`
 
 El repositorio mantiene dos plantillas para cubrir formas distintas de ejecutar la app:

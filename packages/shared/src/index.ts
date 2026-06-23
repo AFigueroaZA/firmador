@@ -71,6 +71,45 @@ export interface ExternalIdentitySummary {
   email?: string;
 }
 
+export const IDENTITY_STATUSES = [
+  "NOT_STARTED",
+  "VALIDATED",
+  "READY",
+  "FAILED",
+] as const;
+
+export type IdentityStatus = (typeof IDENTITY_STATUSES)[number];
+
+export interface IdentityProfile {
+  rut?: string | null;
+  nombres?: string | null;
+  apellidoPaterno?: string | null;
+  apellidoMaterno?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  numeroDocumento?: string | null;
+  fechaNacimiento?: string | null;
+  estadoCivil?: string | null;
+  claveUnicaValidatedAt?: string | null;
+}
+
+export interface IdentityStatusResponse {
+  status: IdentityStatus;
+  canSign: boolean;
+  isValidated: boolean;
+  isProfileComplete: boolean;
+  missingFields: Array<keyof IdentityProfile>;
+  profile: IdentityProfile | null;
+}
+
+export interface PaymentEligibilityResponse {
+  mode: "demo";
+  eligible: boolean;
+  costCredits: number;
+  availableCredits: number;
+  message: string;
+}
+
 export interface AuditEventSummary {
   id: string;
   type: string;

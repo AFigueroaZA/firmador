@@ -7,13 +7,14 @@ import { ValidationPipe } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type {
   CreateSigningProcessResponse,
+  IdentityStatusResponse,
+  PaymentEligibilityResponse,
   SigningProcessDetail,
 } from '@firmador/shared';
 import cookieParser from 'cookie-parser';
 import type { INestApplication } from '@nestjs/common';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
 
 describe('Firmador flow (e2e)', () => {
   jest.setTimeout(30000);
@@ -21,6 +22,7 @@ describe('Firmador flow (e2e)', () => {
   let app: INestApplication;
   let tempRoot: string;
   let httpServer: Parameters<typeof request>[0];
+  let adminPassword: string;
   let operatorPassword: string;
 
   const createPdf = async () => {
@@ -46,6 +48,22 @@ describe('Firmador flow (e2e)', () => {
     return cookies ?? [];
   };
 
+  const loginAdmin = async () => {
+    const loginResponse = await request(httpServer)
+      .post('/api/auth/login')
+      .send({
+        email: 'admin@firmador.local',
+        password: adminPassword,
+      })
+      .expect(201);
+
+    const cookies = loginResponse.get('Set-Cookie');
+    expect(cookies).toEqual(
+      expect.arrayContaining([expect.stringContaining('firmador_access')]),
+    );
+    return cookies ?? [];
+  };
+
   beforeAll(async () => {
     tempRoot = await mkdtemp(join(tmpdir(), 'firmador-e2e-'));
     process.env.STORAGE_ROOT = join(tempRoot, 'storage');
@@ -57,11 +75,13 @@ describe('Firmador flow (e2e)', () => {
     process.env.API_BASE_URL = 'http://localhost:3000';
     process.env.SQLITE_LOCATION = join(tempRoot, 'firmador.sqlite');
     process.env.SEED_ADMIN_EMAIL = 'admin@firmador.local';
-    process.env.SEED_ADMIN_PASSWORD = randomUUID();
+    adminPassword = randomUUID();
+    process.env.SEED_ADMIN_PASSWORD = adminPassword;
     process.env.SEED_OPERATOR_EMAIL = 'operador@firmador.local';
     operatorPassword = randomUUID();
     process.env.SEED_OPERATOR_PASSWORD = operatorPassword;
 
+    const { AppModule } = await import('../src/app.module');
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -85,6 +105,151 @@ describe('Firmador flow (e2e)', () => {
     if (existsSync(tempRoot)) {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it('enables the demo-first flow after mock identity onboarding', async () => {
+    const authCookies = await loginOperator();
+
+    const initialIdentityResponse = await request(httpServer)
+      .get('/api/identity/me')
+      .set('Cookie', authCookies)
+      .expect(200);
+
+    expect(initialIdentityResponse.body).toMatchObject({
+      status: 'NOT_STARTED',
+      canSign: false,
+    });
+
+    const authorizeResponse = await request(httpServer)
+      .get('/api/identity/clave-unica/authorize')
+      .set('Cookie', authCookies)
+      .expect(200);
+
+    const authorization = authorizeResponse.body as { url: string };
+    expect(authorization.url).toContain('/api/identity/clave-unica/callback');
+
+    const callbackUrl = new URL(authorization.url);
+    await request(httpServer)
+      .get(`${callbackUrl.pathname}${callbackUrl.search}`)
+      .expect(302)
+      .expect('Location', 'http://localhost:4321/identity');
+
+    const validatedIdentityResponse = await request(httpServer)
+      .get('/api/identity/me')
+      .set('Cookie', authCookies)
+      .expect(200);
+
+    const validatedIdentityBody =
+      validatedIdentityResponse.body as IdentityStatusResponse;
+    expect(validatedIdentityBody.status).toBe('VALIDATED');
+    expect(validatedIdentityBody.canSign).toBe(false);
+    expect(validatedIdentityBody.missingFields).toEqual(
+      expect.arrayContaining([
+        'numeroDocumento',
+        'fechaNacimiento',
+        'estadoCivil',
+        'telefono',
+      ]),
+    );
+
+    const readyIdentityResponse = await request(httpServer)
+      .patch('/api/identity/profile')
+      .set('Cookie', authCookies)
+      .send({
+        numeroDocumento: '123456789',
+        fechaNacimiento: '1990-01-10',
+        estadoCivil: 'Soltero',
+        telefono: '56912345678',
+      })
+      .expect(200);
+
+    const readyIdentityBody =
+      readyIdentityResponse.body as IdentityStatusResponse;
+    expect(readyIdentityBody.status).toBe('READY');
+    expect(readyIdentityBody.canSign).toBe(true);
+
+    const createResponse = await request(httpServer)
+      .post('/api/signing/processes')
+      .set('Cookie', authCookies)
+      .attach('pdf', await createPdf(), {
+        filename: 'demo-ui-flow.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(201);
+
+    const createBody = createResponse.body as CreateSigningProcessResponse;
+    expect(createBody.status).toBe('UPLOADED');
+
+    const processId = createBody.processId;
+    const configuredResponse = await request(httpServer)
+      .patch(`/api/signing/processes/${processId}/sign-options`)
+      .set('Cookie', authCookies)
+      .send({
+        visible: true,
+        page: 1,
+        x: 100,
+        y: 90,
+        width: 180,
+        height: 70,
+      })
+      .expect(200);
+
+    const configuredBody = configuredResponse.body as SigningProcessDetail;
+    expect(configuredBody.status).toBe('CONFIGURED');
+
+    const paymentResponse = await request(httpServer)
+      .get(`/api/signing/processes/${processId}/payment`)
+      .set('Cookie', authCookies)
+      .expect(200);
+
+    const paymentBody = paymentResponse.body as PaymentEligibilityResponse;
+    expect(paymentBody).toMatchObject({
+      mode: 'demo',
+      eligible: true,
+      costCredits: 1,
+      availableCredits: 1,
+    });
+
+    const signedResponse = await request(httpServer)
+      .post(`/api/signing/processes/${processId}/start-signing`)
+      .set('Cookie', authCookies)
+      .expect(201);
+
+    const signedBody = signedResponse.body as SigningProcessDetail;
+    expect(signedBody.status).toBe('SIGNED');
+    expect(signedBody.nextStep).toBe('download');
+
+    await request(httpServer)
+      .get(`/api/signing/processes/${processId}/download`)
+      .set('Cookie', authCookies)
+      .expect(200)
+      .expect('Content-Type', /application\/pdf/);
+  });
+
+  it('blocks demo signing until identity onboarding is complete', async () => {
+    const authCookies = await loginAdmin();
+
+    const createResponse = await request(httpServer)
+      .post('/api/signing/processes')
+      .set('Cookie', authCookies)
+      .field('visible', 'true')
+      .field('page', '1')
+      .field('x', '120')
+      .field('y', '80')
+      .field('width', '160')
+      .field('height', '64')
+      .attach('pdf', await createPdf(), {
+        filename: 'blocked-demo.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(201);
+
+    const createBody = createResponse.body as CreateSigningProcessResponse;
+
+    await request(httpServer)
+      .post(`/api/signing/processes/${createBody.processId}/start-signing`)
+      .set('Cookie', authCookies)
+      .expect(403);
   });
 
   it('completes the visual placement happy path with the mock provider', async () => {

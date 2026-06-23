@@ -1,7 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { getSession } from "./lib/server/api";
 
-const protectedPrefixes = ["/dashboard", "/history", "/sign"];
+const protectedPrefixes = ["/dashboard", "/history", "/identity", "/sign"];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const session = await getSession(context.request);
@@ -29,4 +29,3 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   return next();
 });
-

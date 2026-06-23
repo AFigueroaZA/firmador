@@ -1,0 +1,148 @@
+---
+import type { IdentityStatusResponse } from "@firmador/shared";
+import AppLayout from "../layouts/AppLayout.astro";
+import { serverFetch } from "../lib/server/api";
+
+const response = await serverFetch(Astro.request, "/api/identity/me");
+if (!response.ok) {
+  return Astro.redirect("/login");
+}
+
+const identity = (await response.json()) as IdentityStatusResponse;
+const nextPath = Astro.url.searchParams.get("next") ?? "/sign/new";
+const error = Astro.url.searchParams.get("error");
+const profile = identity.profile;
+---
+
+<AppLayout title="Identidad y perfil" user={Astro.locals.user}>
+  <section class="mx-auto max-w-4xl space-y-5">
+    {error && (
+      <div class="panel border-rose-200 bg-rose-50 px-6 py-4 text-sm text-rose-700">
+        No se pudo completar la validacion. Intentalo nuevamente.
+      </div>
+    )}
+
+    <div class="panel animate-rise px-6 py-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Estado
+          </p>
+          <h2 class="mt-2 text-xl font-semibold text-ink">
+            {identity.canSign ? "Usuario habilitado para firmar" : "Validacion requerida"}
+          </h2>
+          <p class="mt-2 text-sm text-slate-600">
+            Primero valida tu identidad y completa los datos necesarios para operar documentos.
+          </p>
+        </div>
+        <div class="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+          {identity.status}
+        </div>
+      </div>
+    </div>
+
+    {!identity.isValidated && (
+      <article class="panel animate-rise px-6 py-6">
+        <h3 class="text-lg font-semibold text-ink">Validacion con ClaveUnica</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          En modo demo, el proveedor mock devuelve una identidad validada y luego podras completar el perfil.
+        </p>
+        <div class="mt-5">
+          <a class="button-primary" href="/api/identity/clave-unica/authorize">
+            Validar identidad
+          </a>
+        </div>
+      </article>
+    )}
+
+    {identity.isValidated && !identity.canSign && (
+      <form class="panel animate-rise space-y-5 px-6 py-6" data-next={nextPath} id="identity-profile-form">
+        <div>
+          <h3 class="text-lg font-semibold text-ink">Completar perfil</h3>
+          <p class="mt-2 text-sm text-slate-600">
+            Estos datos quedan asociados al usuario validado antes de iniciar procesos de firma.
+          </p>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="text-sm font-medium text-slate-700">
+            RUN validado
+            <input class="field mt-2 bg-slate-50" readonly value={profile?.rut ?? ""} />
+          </label>
+          <label class="text-sm font-medium text-slate-700">
+            Email
+            <input class="field mt-2 bg-slate-50" readonly value={profile?.email ?? ""} />
+          </label>
+          <label class="text-sm font-medium text-slate-700">
+            Numero de documento
+            <input class="field mt-2" name="numeroDocumento" required value={profile?.numeroDocumento ?? ""} />
+          </label>
+          <label class="text-sm font-medium text-slate-700">
+            Fecha de nacimiento
+            <input class="field mt-2" name="fechaNacimiento" placeholder="AAAA-MM-DD" required value={profile?.fechaNacimiento ?? ""} />
+          </label>
+          <label class="text-sm font-medium text-slate-700">
+            Estado civil
+            <input class="field mt-2" name="estadoCivil" required value={profile?.estadoCivil ?? ""} />
+          </label>
+          <label class="text-sm font-medium text-slate-700">
+            Telefono
+            <input class="field mt-2" name="telefono" required value={profile?.telefono ?? ""} />
+          </label>
+        </div>
+
+        <div class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="identity-profile-error"></div>
+        <button class="button-primary" type="submit">Guardar perfil</button>
+      </form>
+    )}
+
+    {identity.canSign && (
+      <article class="panel animate-rise px-6 py-6">
+        <h3 class="text-lg font-semibold text-ink">Perfil listo</h3>
+        <p class="mt-2 text-sm text-slate-600">
+          La identidad esta validada y el perfil tiene los datos necesarios para firmar documentos.
+        </p>
+        <dl class="mt-5 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
+          <div class="rounded-2xl bg-slate-50 px-4 py-3">
+            <dt class="font-semibold text-slate-700">RUN</dt>
+            <dd>{profile?.rut}</dd>
+          </div>
+          <div class="rounded-2xl bg-slate-50 px-4 py-3">
+            <dt class="font-semibold text-slate-700">Email</dt>
+            <dd>{profile?.email}</dd>
+          </div>
+        </dl>
+        <div class="mt-5">
+          <a class="button-primary" href={nextPath}>Continuar</a>
+        </div>
+      </article>
+    )}
+  </section>
+
+  <script is:inline>
+    const form = document.querySelector("#identity-profile-form");
+    const errorBox = document.querySelector("#identity-profile-error");
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox?.classList.add("hidden");
+
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      const response = await fetch("/api/identity/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        if (errorBox) {
+          errorBox.textContent = "No se pudo guardar el perfil.";
+          errorBox.classList.remove("hidden");
+        }
+        return;
+      }
+
+      window.location.assign(form.getAttribute("data-next") || "/sign/new");
+    });
+  </script>
+</AppLayout>
