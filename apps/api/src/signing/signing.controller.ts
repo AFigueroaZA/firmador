@@ -71,6 +71,14 @@ export class SigningController {
     return this.signingService.getAuthorizationUrl(requestUser, processId);
   }
 
+  @Get('processes/:id/payment')
+  async getPaymentEligibility(
+    @CurrentUser() requestUser: RequestUser,
+    @Param('id') processId: string,
+  ) {
+    return this.signingService.getPaymentEligibility(requestUser, processId);
+  }
+
   @Patch('processes/:id/sign-options')
   async updateSignOptions(
     @CurrentUser() requestUser: RequestUser,
@@ -92,6 +100,14 @@ export class SigningController {
       idChallenge: payload.idChallenge,
       answers: payload.answers,
     });
+  }
+
+  @Post('processes/:id/start-signing')
+  async startSigning(
+    @CurrentUser() requestUser: RequestUser,
+    @Param('id') processId: string,
+  ) {
+    return this.signingService.startDemoSigning(requestUser, processId);
   }
 
   @Get('processes/:id/download')

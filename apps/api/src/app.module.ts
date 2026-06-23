@@ -9,6 +9,7 @@ import { validateConfig } from './config/env.validation';
 import { createTypeOrmOptions } from './database/typeorm.config';
 import { DocumentsModule } from './documents/documents.module';
 import { HistoryModule } from './history/history.module';
+import { IdentityModule } from './identity/identity.module';
 import { ProviderModule } from './provider/provider.module';
 import { SigningModule } from './signing/signing.module';
 
@@ -31,6 +32,7 @@ import { SigningModule } from './signing/signing.module';
     AuthModule,
     DocumentsModule,
     AuditModule,
+    IdentityModule,
     ProviderModule,
     SigningModule,
     HistoryModule,

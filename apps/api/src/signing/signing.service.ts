@@ -9,6 +9,7 @@ import {
 import type {
   ChallengePayload,
   CreateSigningProcessResponse,
+  PaymentEligibilityResponse,
   SigningProcessDetail,
   SigningProcessSummary,
 } from '@firmador/shared';
@@ -21,14 +22,16 @@ import type { RequestUser } from '../auth/interfaces/request-user.interface';
 import { statusToNextStep } from '../common/utils/signing-next-step';
 import { loadAppConfig } from '../config/app.config';
 import { DocumentsModule } from '../documents/documents.module';
-import { EncryptedFileStoreService } from '../documents/encrypted-file-store.service';
+import { DocumentStorageService } from '../documents/document-storage.service';
 import { PdfValidationService } from '../documents/pdf-validation.service';
 import { SealedPayloadService } from '../documents/sealed-payload.service';
+import { IdentityService } from '../identity/identity.service';
 import { ProviderService } from '../provider/provider.service';
 import type {
   ExternalProfileOverrides,
   ProviderContext,
 } from '../provider/types';
+import { SignatureRegistrationEntity } from './entities/signature-registration.entity';
 import {
   hasSignOptionFields,
   normalizeSignOptions,
@@ -44,10 +47,13 @@ export class SigningService {
   constructor(
     @InjectRepository(SigningProcessEntity)
     private readonly processRepository: Repository<SigningProcessEntity>,
+    @InjectRepository(SignatureRegistrationEntity)
+    private readonly registrationRepository: Repository<SignatureRegistrationEntity>,
     private readonly pdfValidationService: PdfValidationService,
-    private readonly fileStore: EncryptedFileStoreService,
+    private readonly fileStore: DocumentStorageService,
     private readonly sealedPayloadService: SealedPayloadService,
     private readonly auditService: AuditService,
+    private readonly identityService: IdentityService,
     private readonly providerService: ProviderService,
   ) {
     void DocumentsModule;
@@ -278,6 +284,129 @@ export class SigningService {
     });
 
     return { url: result.redirectUrl };
+  }
+
+  async getPaymentEligibility(
+    requestUser: RequestUser,
+    processId: string,
+  ): Promise<PaymentEligibilityResponse> {
+    const process = await this.getAccessibleProcess(requestUser, processId);
+    await this.ensureNotExpired(process);
+    const identity = await this.identityService.getStatus(requestUser);
+    const eligible = identity.canSign && process.status === 'CONFIGURED';
+
+    return {
+      mode: 'demo',
+      eligible,
+      costCredits: 1,
+      availableCredits: eligible ? 1 : 0,
+      message: eligible
+        ? 'Demo credit available for this signing process.'
+        : 'Complete identity validation and signature placement before signing.',
+    };
+  }
+
+  async startDemoSigning(requestUser: RequestUser, processId: string) {
+    const process = await this.getAccessibleProcess(requestUser, processId);
+    await this.ensureNotExpired(process);
+
+    if (this.config.signingProviderMode !== 'mock') {
+      throw new BadRequestException(
+        'Demo signing is only available in mock provider mode.',
+      );
+    }
+
+    if (process.status === 'UPLOADED') {
+      throw new BadRequestException(
+        'Configure signature placement before signing.',
+      );
+    }
+
+    if (process.status !== 'CONFIGURED') {
+      throw new BadRequestException(
+        'Demo signing can only start from a configured process.',
+      );
+    }
+
+    validateSignOptionsForPdf(process.signOptions, process.pdfMetadata);
+    await this.identityService.ensureCanSign(requestUser.id);
+    const payment = await this.getPaymentEligibility(requestUser, process.id);
+    if (!payment.eligible) {
+      throw new BadRequestException(payment.message);
+    }
+
+    const registration = await this.getOrCreateMockRegistration(requestUser.id);
+    const providerContext =
+      this.sealedPayloadService.openJson<ProviderContext>(
+        registration.providerContextEncrypted,
+      ) ?? {};
+
+    try {
+      const previousStatus = process.status;
+      process.status = 'SIGNING';
+      await this.processRepository.save(process);
+      await this.auditService.record({
+        processId: process.id,
+        actorUserId: requestUser.id,
+        actor: requestUser.email,
+        type: 'DEMO_PAYMENT_ACCEPTED',
+        message: 'Demo credit accepted for signing.',
+        fromStatus: previousStatus,
+        toStatus: process.status,
+        meta: {
+          mode: payment.mode,
+          costCredits: payment.costCredits,
+          availableCredits: payment.availableCredits,
+          signatureRegistrationId: registration.id,
+        },
+      });
+
+      const imageBuffer = process.signatureImageStoragePath
+        ? await this.fileStore.read(process.signatureImageStoragePath)
+        : null;
+      const originalPdf = await this.fileStore.read(
+        process.originalStoragePath,
+      );
+      const signResult = await this.providerService.signDocument({
+        providerContext,
+        fileName: process.originalFileName,
+        pdfBuffer: originalPdf,
+        signOptions: process.signOptions,
+        imageBuffer,
+      });
+
+      process.signedStoragePath = await this.fileStore.save(
+        process.id,
+        'signed',
+        signResult.signedPdfBuffer,
+      );
+      process.providerContextEncrypted = this.sealedPayloadService.sealJson({
+        ...providerContext,
+        signatureRegistrationId: registration.id,
+      });
+      process.status = 'SIGNED';
+      process.signedAt = new Date();
+      process.errorMessage = null;
+      await this.processRepository.save(process);
+      await this.auditService.record({
+        processId: process.id,
+        actor: 'system',
+        type: 'DOCUMENT_SIGNED',
+        message: 'Signed PDF received from mock provider.',
+        fromStatus: 'SIGNING',
+        toStatus: 'SIGNED',
+        meta: {
+          ...signResult.auditMeta,
+          signatureRegistrationId: registration.id,
+        },
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unexpected signing failure.';
+      await this.failProcess(process, message, requestUser.email);
+    }
+
+    return this.getProcessDetail(requestUser, process.id);
   }
 
   async handleAuthorizationCallback(input: {
@@ -521,6 +650,30 @@ export class SigningService {
     }
 
     return process;
+  }
+
+  private async getOrCreateMockRegistration(userId: string) {
+    const now = new Date();
+    const existing = await this.registrationRepository.findOne({
+      where: { userId, status: 'ACTIVE' },
+      order: { createdAt: 'DESC' },
+    });
+    if (existing && existing.validUntil.getTime() > now.getTime()) {
+      return existing;
+    }
+
+    const registration = this.registrationRepository.create({
+      userId,
+      status: 'ACTIVE',
+      validFrom: now,
+      validUntil: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
+      providerContextEncrypted: this.sealedPayloadService.sealJson({
+        provider: 'mock',
+        pinFirma: this.config.providerPinFirma,
+        configurationName: 'mock-config',
+      }),
+    });
+    return this.registrationRepository.save(registration);
   }
 
   private coerceSignOptionFields(fields: Record<string, unknown>) {
