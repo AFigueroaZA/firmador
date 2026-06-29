@@ -8,6 +8,8 @@ export interface AppConfig {
   corsOrigin: string;
   databaseUrl?: string;
   databaseSynchronize: boolean;
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
   storageRoot: string;
   tempFileTtlHours: number;
   encryptionKey: string;
@@ -74,6 +76,8 @@ export const loadAppConfig = (): AppConfig => {
     corsOrigin: process.env.CORS_ORIGIN ?? webBaseUrl,
     databaseUrl: process.env.DATABASE_URL,
     databaseSynchronize: asBoolean(process.env.DATABASE_SYNCHRONIZE, true),
+    supabaseUrl: env('NEXT_PUBLIC_SUPABASE_URL'),
+    supabasePublishableKey: env('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
     storageRoot: resolveWorkspacePath(
       process.env.STORAGE_ROOT,
       'apps/api/storage',

@@ -12,6 +12,7 @@ import { HistoryModule } from './history/history.module';
 import { IdentityModule } from './identity/identity.module';
 import { ProviderModule } from './provider/provider.module';
 import { SigningModule } from './signing/signing.module';
+import { SupabaseModule } from './supabase/supabase.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { SigningModule } from './signing/signing.module';
     ProviderModule,
     SigningModule,
     HistoryModule,
+    SupabaseModule,
   ],
 })
 export class AppModule {}
