@@ -204,7 +204,7 @@ describe('Firmador flow (e2e)', () => {
 
     const paymentBody = paymentResponse.body as PaymentEligibilityResponse;
     expect(paymentBody).toMatchObject({
-      mode: 'demo',
+      mode: 'mock',
       eligible: true,
       costCredits: 1,
       availableCredits: 1,

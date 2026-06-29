@@ -29,5 +29,20 @@ export const validateConfig = (config: AppConfig) => {
         `Missing provider configuration in live mode: ${missing.join(', ')}`,
       );
     }
+
+    if (config.providerQrEnabled) {
+      const missingQr = [
+        ['PROVIDER_QR_X', config.providerQrX],
+        ['PROVIDER_QR_Y', config.providerQrY],
+      ]
+        .filter(([, value]) => !value)
+        .map(([name]) => name);
+
+      if (missingQr.length > 0) {
+        throw new Error(
+          `Missing QR configuration in live mode: ${missingQr.join(', ')}`,
+        );
+      }
+    }
   }
 };

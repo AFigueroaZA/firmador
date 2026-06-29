@@ -20,6 +20,10 @@ import type {
   ProviderStageResult,
   SignDocumentResult,
 } from './types';
+import {
+  normalizeProfileForChallenge,
+  normalizeProfileForRa,
+} from './utils/provider-normalization';
 
 @Injectable()
 export class ProviderService {
@@ -120,7 +124,7 @@ export class ProviderService {
     this.assertChallengeProfileComplete(externalProfile);
     const challengeToken = await this.challengeClient.generateToken();
     const challenge = await this.challengeClient.createChallenge(
-      externalProfile,
+      normalizeProfileForChallenge(externalProfile),
       challengeToken.token,
     );
 
@@ -216,7 +220,7 @@ export class ProviderService {
     }
 
     const result = await this.raClient.createRequest({
-      profile: input.providerContext.externalProfile,
+      profile: normalizeProfileForRa(input.providerContext.externalProfile),
       idValidation: input.providerContext.idValidation,
     });
 

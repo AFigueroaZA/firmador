@@ -296,12 +296,14 @@ export class SigningService {
     const eligible = identity.canSign && process.status === 'CONFIGURED';
 
     return {
-      mode: 'demo',
+      mode: this.config.signingProviderMode,
       eligible,
       costCredits: 1,
       availableCredits: eligible ? 1 : 0,
       message: eligible
-        ? 'Demo credit available for this signing process.'
+        ? this.config.signingProviderMode === 'mock'
+          ? 'Demo credit available for this signing process.'
+          : 'Ready to start external provider authorization.'
         : 'Complete identity validation and signature placement before signing.',
     };
   }

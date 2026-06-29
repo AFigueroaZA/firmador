@@ -81,6 +81,9 @@ Referencia de variables:
 | `PROVIDER_CERT_DOWNLOAD_PASSWORD` | Clave del usuario de descarga/configuracion de certificados. Obligatoria en modo `live`. |
 | `PROVIDER_PIN_FIRMA` | PIN de firma enviado al proveedor para configurar y ejecutar la firma. Obligatorio en modo `live`. |
 | `PROVIDER_CERT_TYPE` | Tipo de certificado solicitado al proveedor. Por defecto `FEA`. |
+| `PROVIDER_QR_ENABLED` | Activa el codigo QR en la configuracion del certificado enviada a eSigner. Por defecto `false`. |
+| `PROVIDER_QR_X` | Posicion X del codigo QR cuando `PROVIDER_QR_ENABLED=true`. |
+| `PROVIDER_QR_Y` | Posicion Y del codigo QR cuando `PROVIDER_QR_ENABLED=true`. |
 | `DEFAULT_CERTIFICATE_PASSWORD` | Contrasena asignada al certificado solicitado/descargado. Obligatoria en modo `live`. |
 | `CERTIFICATE_VALIDITY_DAYS` | Vigencia del certificado, en dias, enviada a RA. Por defecto `365`. |
 | `SEED_ADMIN_EMAIL` | Email del usuario administrador inicial creado por el seed/bootstrap cuando la base esta vacia. |

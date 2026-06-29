@@ -30,6 +30,9 @@ export interface AppConfig {
   providerCertDownloadPassword: string;
   providerPinFirma: string;
   providerCertType: string;
+  providerQrEnabled: boolean;
+  providerQrX?: string;
+  providerQrY?: string;
   defaultCertificatePassword: string;
   certificateValidityDays: number;
 }
@@ -112,6 +115,9 @@ export const loadAppConfig = (): AppConfig => {
       process.env.PROVIDER_CERT_DOWNLOAD_PASSWORD ?? '',
     providerPinFirma: env('PROVIDER_PIN_FIRMA') ?? '',
     providerCertType: process.env.PROVIDER_CERT_TYPE ?? 'FEA',
+    providerQrEnabled: asBoolean(process.env.PROVIDER_QR_ENABLED, false),
+    providerQrX: env('PROVIDER_QR_X'),
+    providerQrY: env('PROVIDER_QR_Y'),
     defaultCertificatePassword: env('DEFAULT_CERTIFICATE_PASSWORD') ?? '',
     certificateValidityDays: Number.parseInt(
       process.env.CERTIFICATE_VALIDITY_DAYS ?? '365',
