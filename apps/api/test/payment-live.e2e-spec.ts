@@ -1,7 +1,3 @@
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { ValidationPipe } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -18,9 +14,11 @@ import request from 'supertest';
 import type { Repository } from 'typeorm';
 import { UserIdentityEntity } from '../src/identity/entities/user-identity.entity';
 
-describe('Live provider payment eligibility (e2e)', () => {
+const describeSupabaseE2e =
+  process.env.RUN_SUPABASE_E2E === '1' ? describe : describe.skip;
+
+describeSupabaseE2e('Live provider payment eligibility (Supabase e2e)', () => {
   let app: INestApplication;
-  let tempRoot: string;
   let httpServer: Parameters<typeof request>[0];
   let operatorPassword: string;
   let identityRepository: Repository<UserIdentityEntity>;
@@ -33,15 +31,15 @@ describe('Live provider payment eligibility (e2e)', () => {
   };
 
   beforeAll(async () => {
-    tempRoot = await mkdtemp(join(tmpdir(), 'firmador-live-e2e-'));
-    process.env.STORAGE_ROOT = join(tempRoot, 'storage');
-    process.env.JWT_ACCESS_SECRET = randomUUID();
-    process.env.JWT_REFRESH_SECRET = randomUUID();
     process.env.ENCRYPTION_KEY = randomUUID();
     process.env.SIGNING_PROVIDER_MODE = 'live';
     process.env.WEB_BASE_URL = 'http://localhost:4321';
     process.env.API_BASE_URL = 'http://localhost:3000';
-    process.env.SQLITE_LOCATION = join(tempRoot, 'firmador.sqlite');
+    process.env.DATABASE_SCHEMA = process.env.DATABASE_SCHEMA ?? 'public';
+    process.env.DATABASE_SYNCHRONIZE =
+      process.env.DATABASE_SYNCHRONIZE ?? 'false';
+    process.env.SUPABASE_STORAGE_BUCKET =
+      process.env.SUPABASE_STORAGE_BUCKET ?? 'documents';
     process.env.SEED_ADMIN_EMAIL = 'admin@firmador.local';
     process.env.SEED_ADMIN_PASSWORD = randomUUID();
     process.env.SEED_OPERATOR_EMAIL = 'operador@firmador.local';
@@ -77,9 +75,6 @@ describe('Live provider payment eligibility (e2e)', () => {
   afterAll(async () => {
     if (app) {
       await app.close();
-    }
-    if (existsSync(tempRoot)) {
-      await rm(tempRoot, { recursive: true, force: true });
     }
   });
 

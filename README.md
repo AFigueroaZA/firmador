@@ -14,7 +14,7 @@ Monorepo `pnpm` para una plataforma web de firma de PDFs con:
 ## Estructura
 
 - `apps/web`: Astro SSR + Tailwind + una isla React con `pdf.js`
-- `apps/api`: NestJS + TypeORM + `sql.js` en desarrollo
+- `apps/api`: NestJS + TypeORM sobre Supabase Postgres
 - `packages/shared`: contratos, enums y tipos compartidos
 - `.env`: variables reales para ejecutar localmente desde la raiz
 - `.env.example`: plantilla sin secretos
@@ -33,7 +33,7 @@ Esto levanta:
 - web en `http://localhost:4321`
 - api en `http://localhost:3000`
 
-Antes de ejecutar `pnpm seed` completa los secretos obligatorios en `.env`: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ENCRYPTION_KEY`, `SEED_ADMIN_PASSWORD` y `SEED_OPERATOR_PASSWORD`. El puerto web se toma desde `WEB_BASE_URL` y se inicia en modo estricto. Si `4321` esta ocupado, cierra el proceso que lo usa o cambia `WEB_BASE_URL` y `CORS_ORIGIN` en `.env`.
+Antes de ejecutar `pnpm seed` completa los secretos obligatorios en `.env`: `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_KEY`, `SEED_ADMIN_PASSWORD` y `SEED_OPERATOR_PASSWORD`. El puerto web se toma desde `WEB_BASE_URL` y se inicia en modo estricto. Si `4321` esta ocupado, cierra el proceso que lo usa o cambia `WEB_BASE_URL` y `CORS_ORIGIN` en `.env`.
 
 ## Credenciales seed
 
@@ -57,17 +57,16 @@ Referencia de variables:
 | `WEB_BASE_URL` | URL base publica de la web. La API la usa para redirigir al usuario al finalizar flujos de identidad o firma. |
 | `CORS_ORIGIN` | Origen permitido por CORS para llamadas desde la web. Si no se define, usa `WEB_BASE_URL`. |
 | `COOKIE_SECURE` | Define si las cookies de sesion se emiten con flag `Secure`. Usar `true` cuando el sitio corre sobre HTTPS. |
-| `JWT_ACCESS_SECRET` | Secreto para firmar tokens JWT de acceso. Es obligatorio y debe ser un valor largo y privado. |
-| `JWT_REFRESH_SECRET` | Secreto para firmar tokens JWT de refresco. Es obligatorio y debe ser distinto al secreto de acceso. |
-| `JWT_ACCESS_TTL` | Tiempo de vida del token de acceso, por ejemplo `2h`. |
-| `JWT_REFRESH_TTL` | Tiempo de vida del token de refresco, por ejemplo `7d`. |
 | `ENCRYPTION_KEY` | Clave usada para derivar la llave AES-256-GCM que cifra PDFs y payloads persistidos. Es obligatoria. |
 | `SIGNING_PROVIDER_MODE` | Modo del proveedor de firma. `mock` usa respuestas simuladas; `live` llama al proveedor real y exige sus credenciales. |
 | `TEMP_FILE_TTL_HOURS` | Horas durante las que un proceso de firma conserva archivos temporales antes de considerarlos expirados. |
-| `STORAGE_ROOT` | Directorio donde la API guarda archivos cifrados de procesos de firma. Las rutas relativas se resuelven desde la raiz del workspace. |
-| `DATABASE_SYNCHRONIZE` | Activa `synchronize` de TypeORM cuando se usa Postgres con `DATABASE_URL`. En desarrollo puede ser `true`; en produccion deberia revisarse antes de habilitarse. |
-| `DATABASE_URL` | Cadena de conexion Postgres. Si se omite, la API usa `sqljs` con almacenamiento local. |
-| `SQLITE_LOCATION` | Ruta del archivo usado por `sqljs` cuando no hay `DATABASE_URL`. Si se omite, usa `apps/api/data/firmador.sqlite`. |
+| `DATABASE_SYNCHRONIZE` | Activa `synchronize` de TypeORM. En Supabase debe quedar `false`; los cambios de schema van por migraciones explicitas. |
+| `DATABASE_URL` | Cadena de conexion Postgres de Supabase. Es obligatoria; no hay fallback SQLite/local. |
+| `DATABASE_SCHEMA` | Schema Postgres usado por TypeORM. En este proyecto debe ser `public`. |
+| `NEXT_PUBLIC_SUPABASE_URL` | URL publica del proyecto Supabase. La usa el backend para Supabase Auth. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key de Supabase. La usa el backend para login compatible con Supabase Auth. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key usada solo por el backend para Auth Admin, Storage y bootstrap. Nunca se expone al frontend. |
+| `SUPABASE_STORAGE_BUCKET` | Bucket privado de Supabase Storage para PDFs e imagenes. Por defecto `documents`. |
 | `PROVIDER_ALLOW_INSECURE_TLS` | Flag para permitir TLS inseguro en integraciones del proveedor cuando sea necesario para ambientes no productivos. Por defecto `false`. |
 | `PROVIDER_CLAVE_UNICA_BASE_URL` | URL base de los endpoints REST de Clave Unica del proveedor. |
 | `PROVIDER_CHALLENGE_BASE_URL` | URL base de los endpoints REST de validacion por challenge del proveedor. |
@@ -113,6 +112,10 @@ SIGNING_PROVIDER_MODE=live
 ```
 
 En modo `live`, ademas de las credenciales base, debes completar `PROVIDER_USERNAME`, `PROVIDER_PASSWORD`, `PROVIDER_CERT_DOWNLOAD_USER`, `PROVIDER_CERT_DOWNLOAD_PASSWORD`, `PROVIDER_RUT_EMPRESA`, `PROVIDER_ORIGIN`, `PROVIDER_PIN_FIRMA` y `DEFAULT_CERTIFICATE_PASSWORD`.
+
+## Registro publico
+
+La primera vista permite iniciar sesion o comenzar un registro nuevo. El registro valida primero la identidad con ClaveUnica, luego solicita los datos faltantes y una contrasena local. Despues de ese alta, el usuario entra con email y contrasena sin repetir ClaveUnica. Supabase se usa como Postgres mediante `DATABASE_URL`; este flujo no usa Supabase Auth ni variables `NEXT_PUBLIC_SUPABASE_*`.
 
 ## Pruebas
 

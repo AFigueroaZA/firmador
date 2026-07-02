@@ -11,25 +11,25 @@ import {
 
 @Entity('user_identities')
 export class UserIdentityEntity {
-  @PrimaryColumn('varchar')
+  @PrimaryColumn('uuid')
   id!: string;
 
-  @Column({ unique: true })
+  @Column({ name: 'user_id', type: 'uuid', unique: true })
   userId!: string;
 
   @Column({ type: 'varchar' })
   status!: IdentityStatus;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ type: 'varchar', nullable: true, unique: true })
   rut!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   nombres!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'apellido_paterno', type: 'varchar', nullable: true })
   apellidoPaterno!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'apellido_materno', type: 'varchar', nullable: true })
   apellidoMaterno!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
@@ -38,25 +38,29 @@ export class UserIdentityEntity {
   @Column({ type: 'varchar', nullable: true })
   telefono!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'numero_documento', type: 'varchar', nullable: true })
   numeroDocumento!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'fecha_nacimiento', type: 'varchar', nullable: true })
   fechaNacimiento!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'estado_civil', type: 'varchar', nullable: true })
   estadoCivil!: string | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({
+    name: 'clave_unica_validated_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   claveUnicaValidatedAt!: Date | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'external_auth_state', type: 'varchar', nullable: true })
   externalAuthState!: string | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
   @BeforeInsert()

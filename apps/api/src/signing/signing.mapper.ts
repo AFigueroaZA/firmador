@@ -15,7 +15,7 @@ export const mapProcessToSummary = (
   sizeBytes: process.sizeBytes,
   sha256: process.sha256,
   signOptions: process.signOptions,
-  expiresAt: process.expiresAt.toISOString(),
+  expiresAt: (process.expiresAt ?? process.createdAt).toISOString(),
   createdAt: process.createdAt.toISOString(),
   updatedAt: process.updatedAt.toISOString(),
   signedAt: process.signedAt?.toISOString() ?? null,

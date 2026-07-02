@@ -1,23 +1,18 @@
-import { existsSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
-
 export interface AppConfig {
   apiPort: number;
   apiBaseUrl: string;
   webBaseUrl: string;
   corsOrigin: string;
   databaseUrl?: string;
+  databaseSchema?: string;
   databaseSynchronize: boolean;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
-  storageRoot: string;
+  supabaseServiceRoleKey?: string;
+  supabaseStorageBucket: string;
   tempFileTtlHours: number;
   encryptionKey: string;
   cookieSecure: boolean;
-  jwtAccessSecret: string;
-  jwtRefreshSecret: string;
-  jwtAccessTtl: string;
-  jwtRefreshTtl: string;
   signingProviderMode: 'mock' | 'live';
   providerAllowInsecureTls: boolean;
   providerClaveUnicaBaseUrl: string;
@@ -52,18 +47,6 @@ const env = (name: string) => {
   return value ? value : undefined;
 };
 
-const workspaceRoot = () => {
-  const currentDirectory = process.cwd();
-  return existsSync(join(currentDirectory, 'apps', 'api'))
-    ? currentDirectory
-    : resolve(currentDirectory, '..', '..');
-};
-
-const resolveWorkspacePath = (value: string | undefined, fallback: string) => {
-  const path = value?.trim() || fallback;
-  return isAbsolute(path) ? path : resolve(workspaceRoot(), path);
-};
-
 export const loadAppConfig = (): AppConfig => {
   const apiPort = Number.parseInt(process.env.API_PORT ?? '3000', 10);
   const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${apiPort}`;
@@ -75,23 +58,18 @@ export const loadAppConfig = (): AppConfig => {
     webBaseUrl,
     corsOrigin: process.env.CORS_ORIGIN ?? webBaseUrl,
     databaseUrl: process.env.DATABASE_URL,
-    databaseSynchronize: asBoolean(process.env.DATABASE_SYNCHRONIZE, true),
+    databaseSchema: env('DATABASE_SCHEMA'),
+    databaseSynchronize: asBoolean(process.env.DATABASE_SYNCHRONIZE, false),
     supabaseUrl: env('NEXT_PUBLIC_SUPABASE_URL'),
     supabasePublishableKey: env('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
-    storageRoot: resolveWorkspacePath(
-      process.env.STORAGE_ROOT,
-      'apps/api/storage',
-    ),
+    supabaseServiceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY'),
+    supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'documents',
     tempFileTtlHours: Number.parseInt(
       process.env.TEMP_FILE_TTL_HOURS ?? '24',
       10,
     ),
     encryptionKey: env('ENCRYPTION_KEY') ?? '',
     cookieSecure: asBoolean(process.env.COOKIE_SECURE, false),
-    jwtAccessSecret: env('JWT_ACCESS_SECRET') ?? '',
-    jwtRefreshSecret: env('JWT_REFRESH_SECRET') ?? '',
-    jwtAccessTtl: process.env.JWT_ACCESS_TTL ?? '2h',
-    jwtRefreshTtl: process.env.JWT_REFRESH_TTL ?? '7d',
     signingProviderMode:
       process.env.SIGNING_PROVIDER_MODE === 'live' ? 'live' : 'mock',
     providerAllowInsecureTls: asBoolean(

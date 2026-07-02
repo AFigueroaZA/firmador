@@ -1,47 +1,36 @@
-import type { SigningProcessStatus } from '@firmador/shared';
-import { randomUUID } from 'node:crypto';
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
 } from 'typeorm';
 
-@Entity('audit_events')
+@Entity('provider_events')
 export class AuditEventEntity {
-  @PrimaryColumn('varchar')
+  @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({ name: 'signing_process_id', type: 'uuid', nullable: true })
+  processId!: string | null;
+
+  @Column({ name: 'payment_id', type: 'uuid', nullable: true })
+  paymentId!: string | null;
+
   @Column()
-  processId!: string;
+  provider!: string;
+
+  @Column({ name: 'event_type' })
+  eventType!: string;
+
+  @Column({ name: 'external_event_id', type: 'varchar', nullable: true })
+  externalEventId!: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  actorUserId!: string | null;
+  status!: string | null;
 
-  @Column()
-  actor!: string;
+  @Column({ type: 'jsonb' })
+  payload!: Record<string, unknown>;
 
-  @Column()
-  type!: string;
-
-  @Column()
-  message!: string;
-
-  @Column({ type: 'varchar', nullable: true })
-  fromStatus!: SigningProcessStatus | null;
-
-  @Column({ type: 'varchar', nullable: true })
-  toStatus!: SigningProcessStatus | null;
-
-  @Column({ type: 'simple-json', nullable: true })
-  meta!: Record<string, unknown> | null;
-
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
-
-  @BeforeInsert()
-  assignId() {
-    this.id = this.id ?? randomUUID();
-  }
 }

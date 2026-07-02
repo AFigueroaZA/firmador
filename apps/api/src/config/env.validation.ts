@@ -1,8 +1,18 @@
 import type { AppConfig } from './app.config';
 
 export const validateConfig = (config: AppConfig) => {
-  if (!config.jwtAccessSecret || !config.jwtRefreshSecret) {
-    throw new Error('JWT secrets are required.');
+  if (!config.databaseUrl) {
+    throw new Error('DATABASE_URL is required.');
+  }
+
+  if (
+    !config.supabaseUrl ||
+    !config.supabasePublishableKey ||
+    !config.supabaseServiceRoleKey
+  ) {
+    throw new Error(
+      'Supabase configuration is required: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SERVICE_ROLE_KEY.',
+    );
   }
 
   if (!config.encryptionKey) {

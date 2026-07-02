@@ -1,22 +1,23 @@
 import type { AuthSession, AuthUser } from '@firmador/shared';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import * as argon2 from 'argon2';
 import type { Request, Response } from 'express';
 import { Repository } from 'typeorm';
 import { loadAppConfig } from '../config/app.config';
-import { UserEntity } from './user.entity';
-import type { LoginDto } from './dto/login.dto';
+import { SupabaseService } from '../supabase/supabase.service';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from './auth.constants';
+import type { LoginDto } from './dto/login.dto';
+import { RoleEntity } from './role.entity';
+import {
+  mapAuthRoleToDatabaseRoleCode,
+  mapDatabaseRoleToAuthRole,
+} from './role-mapping';
+import { UserEntity } from './user.entity';
 import type { RequestUser } from './interfaces/request-user.interface';
-
-interface JwtPayload {
-  sub: string;
-  email: string;
-  fullName: string;
-  role: AuthUser['role'];
-}
 
 @Injectable()
 export class AuthService {
@@ -25,7 +26,9 @@ export class AuthService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
-    private readonly jwtService: JwtService,
+    @InjectRepository(RoleEntity)
+    private readonly roleRepository: Repository<RoleEntity>,
+    private readonly supabaseService: SupabaseService,
   ) {}
 
   async seedDefaultUsers() {
@@ -50,23 +53,31 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, response: Response): Promise<AuthSession> {
-    const user = await this.userRepository.findOne({
-      where: { email: dto.email.toLowerCase() },
+    const supabase = this.supabaseService.getPublicClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: dto.email.toLowerCase(),
+      password: dto.password,
     });
 
-    if (!user) {
+    if (error || !data.session?.access_token || !data.user) {
       throw new UnauthorizedException('Invalid credentials.');
     }
 
-    const passwordMatches = await argon2.verify(
-      user.passwordHash,
-      dto.password,
+    const user = await this.findProfileForAuthUser(
+      data.user.id,
+      data.user.email ?? dto.email,
     );
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid credentials.');
+    if (!user?.isActive) {
+      throw new UnauthorizedException('User is inactive.');
     }
 
-    await this.issueSession(user, response);
+    user.lastLoginAt = new Date();
+    await this.userRepository.save(user);
+    this.setSessionCookies(response, {
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+    });
+
     return { user: this.toAuthUser(user) };
   }
 
@@ -78,37 +89,29 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token missing.');
     }
 
-    const payload = await this.jwtService.verifyAsync<JwtPayload>(
-      refreshToken,
-      {
-        secret: this.config.jwtRefreshSecret,
-      },
-    );
-
-    const user = await this.userRepository.findOne({
-      where: { id: payload.sub },
-    });
-    if (!user || !user.refreshTokenHash) {
-      throw new UnauthorizedException('Refresh session not found.');
-    }
-
-    const isValid = await argon2.verify(user.refreshTokenHash, refreshToken);
-    if (!isValid) {
+    const { data, error } = await this.supabaseService
+      .getPublicClient()
+      .auth.refreshSession({ refresh_token: refreshToken });
+    if (error || !data.session?.access_token || !data.user) {
       throw new UnauthorizedException('Refresh session is invalid.');
     }
 
-    await this.issueSession(user, response);
+    const user = await this.findProfileForAuthUser(
+      data.user.id,
+      data.user.email ?? '',
+    );
+    if (!user?.isActive) {
+      throw new UnauthorizedException('User is inactive.');
+    }
+
+    this.setSessionCookies(response, {
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+    });
     return { user: this.toAuthUser(user) };
   }
 
-  async logout(requestUser: RequestUser | undefined, response: Response) {
-    if (requestUser) {
-      await this.userRepository.update(
-        { id: requestUser.id },
-        { refreshTokenHash: null },
-      );
-    }
-
+  logout(_requestUser: RequestUser | undefined, response: Response) {
     this.clearCookies(response);
     return { ok: true };
   }
@@ -121,29 +124,23 @@ export class AuthService {
       return null;
     }
 
-    try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(
-        accessToken,
-        {
-          secret: this.config.jwtAccessSecret,
-        },
-      );
-      return {
-        id: payload.sub,
-        email: payload.email,
-        fullName: payload.fullName,
-        role: payload.role,
-      };
-    } catch {
+    const { data, error } = await this.supabaseService
+      .getPublicClient()
+      .auth.getUser(accessToken);
+    if (error || !data.user) {
       return null;
     }
+
+    const profile = await this.findProfileForAuthUser(
+      data.user.id,
+      data.user.email ?? '',
+    );
+    return profile?.isActive ? this.toRequestUser(profile) : null;
   }
 
   async getSession(requestUser: RequestUser): Promise<AuthSession> {
-    const user = await this.userRepository.findOne({
-      where: { id: requestUser.id },
-    });
-    if (!user) {
+    const user = await this.getUserById(requestUser.id);
+    if (!user?.isActive) {
       throw new UnauthorizedException('User not found.');
     }
 
@@ -154,21 +151,124 @@ export class AuthService {
     return this.userRepository.findOne({ where: { id } });
   }
 
+  async getUserByEmail(email: string) {
+    return this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+    });
+  }
+
+  async createOperatorUser(input: {
+    email: string;
+    password: string;
+    fullName: string;
+    rut?: string | null;
+    phone?: string | null;
+  }) {
+    const email = input.email.trim().toLowerCase();
+    const existing = await this.getUserByEmail(email);
+    if (existing) {
+      throw new ConflictException('A user with this email already exists.');
+    }
+
+    const [firstName, lastName] = this.splitFullName(input.fullName);
+    const { data, error } = await this.supabaseService
+      .getAdminClient()
+      .auth.admin.createUser({
+        email,
+        password: input.password,
+        email_confirm: true,
+        user_metadata: {
+          first_name: firstName,
+          last_name: lastName,
+        },
+      });
+
+    if (error || !data.user) {
+      throw new ConflictException(error?.message ?? 'Unable to create user.');
+    }
+
+    const role = await this.getRole('operator');
+    const entity = this.userRepository.create({
+      authUserId: data.user.id,
+      roleId: role.id,
+      role,
+      rut: input.rut ?? null,
+      firstName,
+      lastName,
+      email,
+      phone: input.phone ?? null,
+      isActive: true,
+      lastLoginAt: null,
+    });
+    return this.userRepository.save(entity);
+  }
+
+  issueSessionForUser(user: UserEntity, response: Response): AuthSession {
+    void response;
+    return { user: this.toAuthUser(user) };
+  }
+
+  async issueSessionForCredentials(input: {
+    email: string;
+    password: string;
+    response: Response;
+  }): Promise<AuthSession> {
+    return this.login(
+      { email: input.email, password: input.password },
+      input.response,
+    );
+  }
+
   private async createSeedUser(
     email: string,
     password: string,
     fullName: string,
-    role: AuthUser['role'],
+    roleName: AuthUser['role'],
   ) {
-    const passwordHash = await argon2.hash(password);
-    const entity = this.userRepository.create({
-      email: email.toLowerCase(),
+    await this.createUserWithRole({
+      email,
+      password,
       fullName,
-      role,
-      passwordHash,
-      refreshTokenHash: null,
+      role: roleName,
     });
-    await this.userRepository.save(entity);
+  }
+
+  private async createUserWithRole(input: {
+    email: string;
+    password: string;
+    fullName: string;
+    role: AuthUser['role'];
+  }) {
+    const email = input.email.toLowerCase();
+    const [firstName, lastName] = this.splitFullName(input.fullName);
+    const { data, error } = await this.supabaseService
+      .getAdminClient()
+      .auth.admin.createUser({
+        email,
+        password: input.password,
+        email_confirm: true,
+        user_metadata: { first_name: firstName, last_name: lastName },
+      });
+
+    if (error || !data.user) {
+      throw new Error(error?.message ?? `Unable to create ${email}.`);
+    }
+
+    const role = await this.getRole(input.role);
+    await this.userRepository.save(
+      this.userRepository.create({
+        authUserId: data.user.id,
+        roleId: role.id,
+        role,
+        rut: null,
+        firstName,
+        lastName,
+        email,
+        phone: null,
+        isActive: true,
+        lastLoginAt: null,
+      }),
+    );
   }
 
   private getSeedUserConfig() {
@@ -200,28 +300,30 @@ export class AuthService {
     };
   }
 
-  private async issueSession(user: UserEntity, response: Response) {
-    const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      fullName: user.fullName,
-      role: user.role,
-    };
+  private async findProfileForAuthUser(authUserId: string, email: string) {
+    return (
+      (await this.userRepository.findOne({ where: { authUserId } })) ??
+      (email
+        ? await this.userRepository.findOne({
+            where: { email: email.toLowerCase() },
+          })
+        : null)
+    );
+  }
 
-    const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
-        secret: this.config.jwtAccessSecret,
-        expiresIn: this.config.jwtAccessTtl as never,
-      }),
-      this.jwtService.signAsync(payload, {
-        secret: this.config.jwtRefreshSecret,
-        expiresIn: this.config.jwtRefreshTtl as never,
-      }),
-    ]);
+  private async getRole(role: AuthUser['role']) {
+    const code = mapAuthRoleToDatabaseRoleCode(role);
+    const entity = await this.roleRepository.findOne({ where: { code } });
+    if (!entity) {
+      throw new Error(`Role ${code} was not found.`);
+    }
+    return entity;
+  }
 
-    user.refreshTokenHash = await argon2.hash(refreshToken);
-    await this.userRepository.save(user);
-
+  private setSessionCookies(
+    response: Response,
+    tokens: { accessToken: string; refreshToken: string },
+  ) {
     const cookieOptions = {
       httpOnly: true,
       sameSite: 'lax' as const,
@@ -229,8 +331,8 @@ export class AuthService {
       path: '/',
     };
 
-    response.cookie(ACCESS_COOKIE_NAME, accessToken, cookieOptions);
-    response.cookie(REFRESH_COOKIE_NAME, refreshToken, cookieOptions);
+    response.cookie(ACCESS_COOKIE_NAME, tokens.accessToken, cookieOptions);
+    response.cookie(REFRESH_COOKIE_NAME, tokens.refreshToken, cookieOptions);
   }
 
   private clearCookies(response: Response) {
@@ -238,12 +340,25 @@ export class AuthService {
     response.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
   }
 
-  private toAuthUser(user: UserEntity): AuthUser {
+  private toRequestUser(user: UserEntity): RequestUser {
     return {
       id: user.id,
       email: user.email,
-      fullName: user.fullName,
-      role: user.role,
+      fullName: this.fullName(user),
+      role: mapDatabaseRoleToAuthRole(user.role?.code),
     };
+  }
+
+  private toAuthUser(user: UserEntity): AuthUser {
+    return this.toRequestUser(user);
+  }
+
+  private fullName(user: UserEntity) {
+    return [user.firstName, user.lastName].filter(Boolean).join(' ');
+  }
+
+  private splitFullName(fullName: string): [string, string] {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    return [parts[0] ?? fullName, parts.slice(1).join(' ') || 'Firmador'];
   }
 }

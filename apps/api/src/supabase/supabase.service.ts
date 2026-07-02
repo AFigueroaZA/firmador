@@ -4,24 +4,37 @@ import { loadAppConfig } from '../config/app.config';
 
 @Injectable()
 export class SupabaseService {
-  private readonly client: ReturnType<typeof createClient>;
+  private readonly publicClient: ReturnType<typeof createClient> | null;
+  private readonly adminClient: ReturnType<typeof createClient> | null;
 
   constructor() {
     const config = loadAppConfig();
-
-    if (!config.supabaseUrl || !config.supabasePublishableKey) {
-      throw new Error(
-        'Supabase configuration is required: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
-      );
-    }
-
-    this.client = createClient(
-      config.supabaseUrl,
-      config.supabasePublishableKey,
-    );
+    this.publicClient =
+      config.supabaseUrl && config.supabasePublishableKey
+        ? createClient(config.supabaseUrl, config.supabasePublishableKey)
+        : null;
+    this.adminClient =
+      config.supabaseUrl && config.supabaseServiceRoleKey
+        ? createClient(config.supabaseUrl, config.supabaseServiceRoleKey, {
+            auth: {
+              autoRefreshToken: false,
+              persistSession: false,
+            },
+          })
+        : null;
   }
 
-  getClient() {
-    return this.client;
+  getPublicClient() {
+    if (!this.publicClient) {
+      throw new Error('Supabase client is not configured.');
+    }
+    return this.publicClient;
+  }
+
+  getAdminClient() {
+    if (!this.adminClient) {
+      throw new Error('Supabase admin client is not configured.');
+    }
+    return this.adminClient;
   }
 }

@@ -12,11 +12,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-  if (pathname === "/") {
-    return Response.redirect(
-      new URL(session ? "/dashboard" : "/login", context.url),
-      302,
-    );
+  if (pathname === "/" && session) {
+    return Response.redirect(new URL("/dashboard", context.url), 302);
   }
 
   if (pathname === "/login" && session) {

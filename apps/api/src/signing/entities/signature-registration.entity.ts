@@ -1,10 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 
@@ -16,32 +14,41 @@ export type SignatureRegistrationStatus =
 
 @Entity('signature_registrations')
 export class SignatureRegistrationEntity {
-  @PrimaryColumn('varchar')
+  @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
+
+  @Column()
+  provider!: string;
+
+  @Column({ name: 'provider_registration_id', type: 'varchar', nullable: true })
+  providerRegistrationId!: string | null;
+
+  @Column({ name: 'certificate_subject', type: 'text', nullable: true })
+  certificateSubject!: string | null;
 
   @Column({ type: 'varchar' })
   status!: SignatureRegistrationStatus;
 
-  @Column({ type: 'datetime' })
-  validFrom!: Date;
+  @Column({ name: 'valid_from', type: 'timestamptz', nullable: true })
+  validFrom!: Date | null;
 
-  @Column({ type: 'datetime' })
-  validUntil!: Date;
+  @Column({ name: 'valid_until', type: 'timestamptz', nullable: true })
+  validUntil!: Date | null;
 
-  @Column({ type: 'text', nullable: true })
-  providerContextEncrypted!: string | null;
-
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 
-  @BeforeInsert()
-  assignId() {
-    this.id = this.id ?? randomUUID();
+  get providerContextEncrypted() {
+    return this.providerRegistrationId;
+  }
+
+  set providerContextEncrypted(value: string | null) {
+    this.providerRegistrationId = value;
   }
 }

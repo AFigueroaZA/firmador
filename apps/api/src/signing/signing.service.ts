@@ -16,7 +16,7 @@ import type {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Express } from 'express';
-import { Repository } from 'typeorm';
+import { Raw, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../auth/interfaces/request-user.interface';
 import { statusToNextStep } from '../common/utils/signing-next-step';
@@ -31,7 +31,11 @@ import type {
   ExternalProfileOverrides,
   ProviderContext,
 } from '../provider/types';
+import { DocumentEntity } from './entities/document.entity';
+import { SignatureAccountEntity } from './entities/signature-account.entity';
+import { SignatureAssetEntity } from './entities/signature-asset.entity';
 import { SignatureRegistrationEntity } from './entities/signature-registration.entity';
+import { SigningStatusEntity } from './entities/signing-status.entity';
 import {
   hasSignOptionFields,
   normalizeSignOptions,
@@ -49,6 +53,14 @@ export class SigningService {
     private readonly processRepository: Repository<SigningProcessEntity>,
     @InjectRepository(SignatureRegistrationEntity)
     private readonly registrationRepository: Repository<SignatureRegistrationEntity>,
+    @InjectRepository(DocumentEntity)
+    private readonly documentRepository: Repository<DocumentEntity>,
+    @InjectRepository(SignatureAssetEntity)
+    private readonly assetRepository: Repository<SignatureAssetEntity>,
+    @InjectRepository(SignatureAccountEntity)
+    private readonly accountRepository: Repository<SignatureAccountEntity>,
+    @InjectRepository(SigningStatusEntity)
+    private readonly statusRepository: Repository<SigningStatusEntity>,
     private readonly pdfValidationService: PdfValidationService,
     private readonly fileStore: DocumentStorageService,
     private readonly sealedPayloadService: SealedPayloadService,
@@ -88,18 +100,47 @@ export class SigningService {
           imageFileName: imageFile?.originalname,
         };
 
+    const processId = randomUUID();
+    const originalStoragePath = await this.fileStore.save(
+      processId,
+      'original',
+      pdfFile.buffer,
+    );
+    const signatureImageStoragePath = imageFile
+      ? await this.fileStore.save(
+          processId,
+          'signature-image',
+          imageFile.buffer,
+        )
+      : null;
+    const document = await this.documentRepository.save(
+      this.documentRepository.create({
+        userId: requestUser.id,
+        originalFileName: pdfFile.originalname,
+        storagePath: originalStoragePath,
+        mimeType: metadata.mimeType,
+        sizeBytes: String(metadata.sizeBytes),
+        sha256: metadata.sha256,
+        status: 'UPLOADED',
+      }),
+    );
+    const account = await this.getOrCreateAccount(requestUser.id);
     const process = this.processRepository.create({
+      id: processId,
       userId: requestUser.id,
+      documentId: document.id,
+      document,
+      accountId: account.id,
+      account,
       status: 'UPLOADED',
-      originalFileName: pdfFile.originalname,
-      mimeType: metadata.mimeType,
-      sizeBytes: metadata.sizeBytes,
-      sha256: metadata.sha256,
+      provider: 'FIRMA_CL',
+      providerProcessId: null,
+      requestedAt: new Date(),
       signOptions,
       pdfMetadata: metadata.pdfMetadata,
-      originalStoragePath: '',
+      originalStoragePath,
       signedStoragePath: null,
-      signatureImageStoragePath: null,
+      signatureImageStoragePath,
       externalAuthState: null,
       externalIdentity: null,
       externalProfileOverrides,
@@ -112,22 +153,11 @@ export class SigningService {
       signedAt: null,
     });
 
-    await this.processRepository.save(process);
-    process.originalStoragePath = await this.fileStore.save(
-      process.id,
-      'original',
-      pdfFile.buffer,
-    );
-    if (imageFile) {
-      process.signatureImageStoragePath = await this.fileStore.save(
-        process.id,
-        'signature-image',
-        imageFile.buffer,
-      );
-    }
-
     process.status = hasInitialSignOptions ? 'CONFIGURED' : 'UPLOADED';
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
+    if (hasInitialSignOptions && signOptions.visible) {
+      await this.upsertSignatureAsset(process);
+    }
 
     await this.auditService.record({
       processId: process.id,
@@ -194,7 +224,8 @@ export class SigningService {
     const fromStatus = process.status;
     process.signOptions = signOptions;
     process.status = 'CONFIGURED';
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
+    await this.upsertSignatureAsset(process);
 
     await this.auditService.record({
       processId: process.id,
@@ -267,7 +298,7 @@ export class SigningService {
     });
     const fromStatus = process.status;
     process.status = 'EXTERNAL_AUTH_PENDING';
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
 
     await this.auditService.record({
       processId: process.id,
@@ -346,7 +377,7 @@ export class SigningService {
     try {
       const previousStatus = process.status;
       process.status = 'SIGNING';
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actorUserId: requestUser.id,
@@ -389,7 +420,7 @@ export class SigningService {
       process.status = 'SIGNED';
       process.signedAt = new Date();
       process.errorMessage = null;
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actor: 'system',
@@ -417,7 +448,11 @@ export class SigningService {
     error?: string;
   }) {
     const process = await this.processRepository.findOne({
-      where: { externalAuthState: input.state },
+      where: {
+        metadata: Raw((alias) => `${alias}->>'externalAuthState' = :state`, {
+          state: input.state,
+        }),
+      },
     });
 
     if (!process) {
@@ -447,7 +482,7 @@ export class SigningService {
     );
 
     process.status = 'EXTERNAL_AUTH_DONE';
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
     await this.auditService.record({
       processId: process.id,
       actor: 'system',
@@ -460,7 +495,7 @@ export class SigningService {
 
     process.challenge = result.challenge;
     process.status = 'CHALLENGE_PENDING';
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
     await this.auditService.record({
       processId: process.id,
       actor: 'system',
@@ -497,7 +532,7 @@ export class SigningService {
 
     try {
       process.status = 'RA_PENDING';
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actorUserId: requestUser.id,
@@ -521,7 +556,7 @@ export class SigningService {
       process.providerContextEncrypted = this.sealedPayloadService.sealJson(
         raResult.providerContext as Record<string, unknown>,
       );
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actor: 'system',
@@ -544,7 +579,7 @@ export class SigningService {
       process.providerContextEncrypted = this.sealedPayloadService.sealJson(
         certificateResult.providerContext as Record<string, unknown>,
       );
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actor: 'system',
@@ -574,7 +609,7 @@ export class SigningService {
       process.status = 'SIGNED';
       process.signedAt = new Date();
       process.errorMessage = null;
-      await this.processRepository.save(process);
+      await this.saveProcess(process);
       await this.auditService.record({
         processId: process.id,
         actor: 'system',
@@ -660,12 +695,15 @@ export class SigningService {
       where: { userId, status: 'ACTIVE' },
       order: { createdAt: 'DESC' },
     });
-    if (existing && existing.validUntil.getTime() > now.getTime()) {
+    if (existing?.validUntil && existing.validUntil.getTime() > now.getTime()) {
       return existing;
     }
 
     const registration = this.registrationRepository.create({
       userId,
+      provider: 'MOCK',
+      providerRegistrationId: null,
+      certificateSubject: 'mock',
       status: 'ACTIVE',
       validFrom: now,
       validUntil: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
@@ -676,6 +714,78 @@ export class SigningService {
       }),
     });
     return this.registrationRepository.save(registration);
+  }
+
+  private async saveProcess(process: SigningProcessEntity) {
+    process.statusId = await this.getDatabaseStatusId(process.status);
+    return this.processRepository.save(process);
+  }
+
+  private async getDatabaseStatusId(status: SigningProcessEntity['status']) {
+    const code = this.toDatabaseStatusCode(status);
+    const entity = await this.statusRepository.findOne({ where: { code } });
+    if (!entity) {
+      throw new Error(`Signing status ${code} was not found.`);
+    }
+    return entity.id;
+  }
+
+  private toDatabaseStatusCode(status: SigningProcessEntity['status']) {
+    const map: Record<SigningProcessEntity['status'], string> = {
+      UPLOADED: 'DOCUMENT_SELECTED',
+      CONFIGURED: 'READY_TO_SIGN',
+      EXTERNAL_AUTH_PENDING: 'SIGNING_PENDING',
+      EXTERNAL_AUTH_DONE: 'SIGNING_PENDING',
+      CHALLENGE_PENDING: 'SIGNING_PENDING',
+      RA_PENDING: 'SIGNING_PENDING',
+      CERT_PENDING: 'SIGNING_PENDING',
+      SIGNING: 'SIGNING_PENDING',
+      SIGNED: 'SIGNED',
+      FAILED: 'FAILED',
+      EXPIRED: 'EXPIRED',
+    };
+    return map[status];
+  }
+
+  private async getOrCreateAccount(userId: string) {
+    const existing = await this.accountRepository.findOne({
+      where: { userId },
+    });
+    if (existing) {
+      return existing;
+    }
+    return this.accountRepository.save(
+      this.accountRepository.create({
+        userId,
+        currentBalance: 0,
+      }),
+    );
+  }
+
+  private async upsertSignatureAsset(process: SigningProcessEntity) {
+    const options = process.signOptions;
+    if (!options.visible || !options.page) {
+      return;
+    }
+
+    const existing = await this.assetRepository.findOne({
+      where: { signingProcessId: process.id, assetType: 'VISIBLE_SIGNATURE' },
+    });
+    await this.assetRepository.save(
+      this.assetRepository.create({
+        id: existing?.id,
+        signingProcessId: process.id,
+        assetType: 'VISIBLE_SIGNATURE',
+        pageNumber: options.page,
+        x: options.x ?? 0,
+        y: options.y ?? 0,
+        width: options.width ?? 160,
+        height: options.height ?? 80,
+        label: options.imageFileName ?? null,
+        imageStoragePath: process.signatureImageStoragePath,
+        metadata: { signOptions: options },
+      }),
+    );
   }
 
   private coerceSignOptionFields(fields: Record<string, unknown>) {
@@ -726,7 +836,9 @@ export class SigningService {
   }
 
   private isExpired(process: SigningProcessEntity) {
-    return process.expiresAt.getTime() < Date.now();
+    return Boolean(
+      process.expiresAt && process.expiresAt.getTime() < Date.now(),
+    );
   }
 
   private async ensureNotExpired(process: SigningProcessEntity) {
@@ -744,7 +856,7 @@ export class SigningService {
     const previousStatus = process.status;
     process.status = 'EXPIRED';
     process.errorMessage = reason;
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
     await this.fileStore.delete(process.originalStoragePath);
     await this.fileStore.delete(process.signedStoragePath);
     await this.fileStore.delete(process.signatureImageStoragePath);
@@ -767,7 +879,7 @@ export class SigningService {
     const previousStatus = process.status;
     process.status = 'FAILED';
     process.errorMessage = message;
-    await this.processRepository.save(process);
+    await this.saveProcess(process);
     await this.auditService.record({
       processId: process.id,
       actor,

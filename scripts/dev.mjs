@@ -1,7 +1,13 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { delimiter, dirname, join, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  createDevServices,
+  parseEnv,
+  resolvePnpmCommand,
+  waitForTcpTarget,
+} from './dev-processes.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, '..');
@@ -11,107 +17,16 @@ const packageManager = existsSync(packageJsonPath)
   ? JSON.parse(readFileSync(packageJsonPath, 'utf8')).packageManager
   : undefined;
 
-const parseEnv = (source) => {
-  const values = {};
-
-  for (const rawLine of source.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-
-    const normalized = line.startsWith('export ') ? line.slice(7).trim() : line;
-    const separatorIndex = normalized.indexOf('=');
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = normalized.slice(0, separatorIndex).trim();
-    let value = normalized.slice(separatorIndex + 1).trim();
-    if (!key) {
-      continue;
-    }
-
-    const quote = value[0];
-    if (
-      (quote === '"' || quote === "'") &&
-      value.endsWith(quote) &&
-      value.length >= 2
-    ) {
-      value = value.slice(1, -1);
-    }
-
-    values[key] = value;
-  }
-
-  return values;
-};
-
-const executableExists = (name) =>
-  (process.env.PATH ?? '')
-    .split(delimiter)
-    .filter(Boolean)
-    .some((entry) => existsSync(join(entry, name)));
-
-const resolvePnpmCommand = () => {
-  if (process.env.npm_execpath) {
-    return {
-      executable: process.execPath,
-      baseArgs: [process.env.npm_execpath],
-      shell: false,
-    };
-  }
-
-  if (process.platform === 'win32') {
-    if (executableExists('pnpm.cmd')) {
-      return { executable: 'pnpm.cmd', baseArgs: [], shell: true };
-    }
-
-    return {
-      executable: 'corepack.cmd',
-      baseArgs: [packageManager ?? 'pnpm'],
-      shell: true,
-    };
-  }
-
-  return { executable: 'pnpm', baseArgs: [], shell: false };
-};
-
 const rootEnv = existsSync(envPath) ? parseEnv(readFileSync(envPath, 'utf8')) : {};
 const env = {
   ...rootEnv,
   ...process.env,
 };
-const pnpm = resolvePnpmCommand();
-const webPort = (() => {
-  try {
-    const url = new URL(env.WEB_BASE_URL ?? 'http://localhost:4321');
-    return url.port || (url.protocol === 'https:' ? '443' : '80');
-  } catch {
-    return '4321';
-  }
-})();
-
-const services = [
-  {
-    name: 'api',
-    color: '\x1b[34m',
-    args: ['--filter', '@firmador/api', 'start:dev'],
-  },
-  {
-    name: 'web',
-    color: '\x1b[32m',
-    args: [
-      '--filter',
-      '@firmador/web',
-      'dev',
-      '--',
-      '--port',
-      webPort,
-      '--strictPort',
-    ],
-  },
-];
+const pnpm = resolvePnpmCommand({
+  packageManager,
+  npmExecPath: process.env.npm_execpath,
+});
+const services = createDevServices(env);
 
 const children = [];
 let shuttingDown = false;
@@ -125,7 +40,7 @@ const prefixOutput = (service, stream, data) => {
     .forEach((line) => stream.write(`${prefix}${line}\n`));
 };
 
-for (const service of services) {
+const spawnDevService = (service) => {
   const child = spawn(pnpm.executable, [...pnpm.baseArgs, ...service.args], {
     cwd: rootDir,
     env,
@@ -156,7 +71,24 @@ for (const service of services) {
   });
 
   children.push(child);
-}
+};
+
+const startServices = async () => {
+  for (const service of services) {
+    if (service.waitFor) {
+      prefixOutput(
+        service,
+        process.stdout,
+        `Waiting for ${service.waitFor.description} before starting...`,
+      );
+      await waitForTcpTarget(service.waitFor);
+    }
+
+    if (!shuttingDown) {
+      spawnDevService(service);
+    }
+  }
+};
 
 const shutdown = () => {
   if (shuttingDown) {
@@ -173,3 +105,9 @@ const shutdown = () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+startServices().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  shutdown();
+  process.exit(1);
+});
