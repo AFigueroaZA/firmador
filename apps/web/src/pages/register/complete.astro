@@ -1,0 +1,113 @@
+---
+import AppLayout from "../../layouts/AppLayout.astro";
+import { serverFetch } from "../../lib/server/api";
+
+interface RegistrationStatus {
+  status: "VALIDATED" | "COMPLETED";
+  profile: {
+    rut?: string | null;
+    nombres?: string | null;
+    apellidoPaterno?: string | null;
+    apellidoMaterno?: string | null;
+    email?: string | null;
+    telefono?: string | null;
+    numeroDocumento?: string | null;
+    fechaNacimiento?: string | null;
+    estadoCivil?: string | null;
+  };
+  missingFields: string[];
+}
+
+const state = Astro.url.searchParams.get("state") ?? "";
+if (!state) {
+  return Astro.redirect("/?error=registration");
+}
+
+const response = await serverFetch(Astro.request, `/api/registration/${state}`);
+if (!response.ok) {
+  return Astro.redirect("/?error=registration");
+}
+
+const registration = (await response.json()) as RegistrationStatus;
+const profile = registration.profile;
+---
+
+<AppLayout title="Completar registro">
+  <section class="mx-auto max-w-3xl space-y-5">
+    <article class="panel animate-rise px-6 py-6">
+      <h2 class="text-lg font-semibold text-ink">Identidad validada</h2>
+      <dl class="mt-5 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">RUN</dt>
+          <dd>{profile.rut}</dd>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">Nombre</dt>
+          <dd>{[profile.nombres, profile.apellidoPaterno, profile.apellidoMaterno].filter(Boolean).join(" ")}</dd>
+        </div>
+      </dl>
+    </article>
+
+    <form class="panel animate-rise space-y-5 px-6 py-6" data-state={state} id="registration-complete-form">
+      <div class="grid gap-4 md:grid-cols-2">
+        <label class="text-sm font-medium text-slate-700">
+          Correo
+          <input class="field mt-2" name="email" required type="email" value={profile.email ?? ""} />
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+          Contrasena
+          <input class="field mt-2" name="password" minlength="8" required type="password" />
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+          Telefono
+          <input class="field mt-2" name="telefono" required value={profile.telefono ?? ""} />
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+          Numero de documento
+          <input class="field mt-2" name="numeroDocumento" required value={profile.numeroDocumento ?? ""} />
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+          Fecha de nacimiento
+          <input class="field mt-2" name="fechaNacimiento" placeholder="AAAA-MM-DD" required value={profile.fechaNacimiento ?? ""} />
+        </label>
+        <label class="text-sm font-medium text-slate-700">
+          Estado civil
+          <input class="field mt-2" name="estadoCivil" required value={profile.estadoCivil ?? ""} />
+        </label>
+      </div>
+
+      <div class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="registration-complete-error"></div>
+      <button class="button-primary" type="submit">Crear cuenta</button>
+    </form>
+  </section>
+
+  <script is:inline>
+    const form = document.querySelector("#registration-complete-form");
+    const errorBox = document.querySelector("#registration-complete-error");
+    form?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      errorBox?.classList.add("hidden");
+
+      const state = form.getAttribute("data-state") || "";
+      const formData = new FormData(form);
+      const payload = Object.fromEntries(formData.entries());
+      const response = await fetch(`/api/registration/${state}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        if (errorBox) {
+          errorBox.textContent = response.status === 409
+            ? "Ya existe una cuenta con estos datos."
+            : "No se pudo completar el registro.";
+          errorBox.classList.remove("hidden");
+        }
+        return;
+      }
+
+      window.location.assign("/dashboard");
+    });
+  </script>
+</AppLayout>

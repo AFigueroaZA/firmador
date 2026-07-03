@@ -32,12 +32,14 @@ const payment = paymentResponse.ok
   : null;
 ---
 
-<AppLayout title="Pago demo" user={Astro.locals.user}>
+<AppLayout title="Confirmar firma" user={Astro.locals.user}>
   <section class="mx-auto max-w-3xl space-y-5">
     <article class="panel animate-rise px-6 py-6">
-      <h2 class="text-lg font-semibold text-ink">Confirmar saldo</h2>
+      <h2 class="text-lg font-semibold text-ink">Confirmar firma</h2>
       <p class="mt-2 text-sm text-slate-600">
-        Este paso representa la validacion de pago o saldo antes de enviar el PDF al proveedor de firma.
+        {payment?.mode === "live"
+          ? "Revisa el documento antes de iniciar la autorizacion externa con el proveedor de firma."
+          : "Este paso representa la validacion de saldo antes de firmar el PDF en modo demo."}
       </p>
 
       <dl class="mt-5 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
@@ -46,12 +48,12 @@ const payment = paymentResponse.ok
           <dd>{process.originalFileName}</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
-          <dt class="font-semibold text-slate-700">Costo</dt>
-          <dd>{payment?.costCredits ?? 1} credito demo</dd>
+          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Modo" : "Costo"}</dt>
+          <dd>{payment?.mode === "live" ? "Proveedor externo" : `${payment?.costCredits ?? 1} credito demo`}</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
-          <dt class="font-semibold text-slate-700">Saldo disponible</dt>
-          <dd>{payment?.availableCredits ?? 0}</dd>
+          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Autorizacion" : "Saldo disponible"}</dt>
+          <dd>{payment?.mode === "live" ? "Requerida" : payment?.availableCredits ?? 0}</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
           <dt class="font-semibold text-slate-700">Estado</dt>
@@ -67,7 +69,7 @@ const payment = paymentResponse.ok
 
       <div class="mt-6 flex flex-wrap gap-3">
         <button class="button-primary" disabled={!payment?.eligible} id="start-signing-button" type="button">
-          Firmar documento
+          {payment?.mode === "live" ? "Autorizar firma" : "Firmar documento"}
         </button>
         <a class="button-secondary" href="/sign/new">Elegir otro PDF</a>
       </div>
@@ -75,8 +77,9 @@ const payment = paymentResponse.ok
     </article>
   </section>
 
-  <script is:inline data-process-id={processId}>
+  <script is:inline data-mode={payment?.mode ?? "mock"} data-process-id={processId}>
     const processId = document.currentScript?.getAttribute("data-process-id") ?? "";
+    const mode = document.currentScript?.getAttribute("data-mode") ?? "mock";
     const button = document.querySelector("#start-signing-button");
     const errorBox = document.querySelector("#start-signing-error");
 
@@ -84,14 +87,30 @@ const payment = paymentResponse.ok
       button.setAttribute("disabled", "true");
       errorBox?.classList.add("hidden");
 
-      const response = await fetch(`/api/signing/processes/${processId}/start-signing`, {
-        method: "POST",
-      });
+      const response = mode === "live"
+        ? await fetch(`/api/signing/processes/${processId}/authorize`)
+        : await fetch(`/api/signing/processes/${processId}/start-signing`, {
+            method: "POST",
+          });
 
       if (!response.ok) {
         button.removeAttribute("disabled");
         if (errorBox) {
           errorBox.textContent = "No se pudo iniciar la firma. Revisa el estado del proceso.";
+          errorBox.classList.remove("hidden");
+        }
+        return;
+      }
+
+      if (mode === "live") {
+        const result = await response.json();
+        if (typeof result.url === "string" && result.url) {
+          window.location.assign(result.url);
+          return;
+        }
+        button.removeAttribute("disabled");
+        if (errorBox) {
+          errorBox.textContent = "El proveedor no devolvio una URL de autorizacion.";
           errorBox.classList.remove("hidden");
         }
         return;

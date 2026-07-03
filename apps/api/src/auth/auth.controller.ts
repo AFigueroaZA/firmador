@@ -35,7 +35,7 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(
+  logout(
     @CurrentUser() requestUser: RequestUser | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {

@@ -11,7 +11,9 @@ import { DocumentsModule } from './documents/documents.module';
 import { HistoryModule } from './history/history.module';
 import { IdentityModule } from './identity/identity.module';
 import { ProviderModule } from './provider/provider.module';
+import { RegistrationModule } from './registration/registration.module';
 import { SigningModule } from './signing/signing.module';
+import { SupabaseModule } from './supabase/supabase.module';
 
 @Module({
   imports: [
@@ -29,10 +31,12 @@ import { SigningModule } from './signing/signing.module';
     TypeOrmModule.forRootAsync({
       useFactory: createTypeOrmOptions,
     }),
+    SupabaseModule,
     AuthModule,
     DocumentsModule,
     AuditModule,
     IdentityModule,
+    RegistrationModule,
     ProviderModule,
     SigningModule,
     HistoryModule,

@@ -22,6 +22,11 @@ export const serverFetch = (request: Request, path: string, init?: RequestInit) 
 };
 
 export const getSession = async (request: Request): Promise<AuthSession | null> => {
+  const cookie = request.headers.get("cookie") ?? "";
+  if (!cookie.includes("firmador_access=")) {
+    return null;
+  }
+
   let response: Response;
   try {
     response = await serverFetch(request, "/api/auth/me");

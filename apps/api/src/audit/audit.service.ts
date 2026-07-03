@@ -1,4 +1,5 @@
 import type { AuditEventSummary, SigningProcessStatus } from '@firmador/shared';
+import { SIGNING_PROCESS_STATUSES } from '@firmador/shared';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,13 +25,19 @@ export class AuditService {
   }) {
     const entity = this.auditRepository.create({
       processId: input.processId,
-      actorUserId: input.actorUserId ?? null,
-      actor: input.actor,
-      type: input.type,
-      message: input.message,
-      fromStatus: input.fromStatus ?? null,
-      toStatus: input.toStatus ?? null,
-      meta: (sanitizeObject(input.meta) as Record<string, unknown>) ?? null,
+      paymentId: null,
+      provider: 'firmador',
+      eventType: input.type,
+      externalEventId: null,
+      status: input.toStatus ?? input.fromStatus ?? null,
+      payload: {
+        actorUserId: input.actorUserId ?? null,
+        actor: input.actor,
+        message: input.message,
+        fromStatus: input.fromStatus ?? null,
+        toStatus: input.toStatus ?? null,
+        meta: (sanitizeObject(input.meta) as Record<string, unknown>) ?? null,
+      },
     });
     return this.auditRepository.save(entity);
   }
@@ -43,13 +50,29 @@ export class AuditService {
 
     return events.map((event) => ({
       id: event.id,
-      type: event.type,
-      actor: event.actor,
-      message: event.message,
-      fromStatus: event.fromStatus ?? undefined,
-      toStatus: event.toStatus ?? undefined,
+      type: event.eventType,
+      actor:
+        typeof event.payload.actor === 'string'
+          ? event.payload.actor
+          : 'system',
+      message:
+        typeof event.payload.message === 'string' ? event.payload.message : '',
+      fromStatus: this.toSigningStatus(event.payload.fromStatus),
+      toStatus: this.toSigningStatus(event.payload.toStatus),
       createdAt: event.createdAt.toISOString(),
-      meta: event.meta ?? undefined,
+      meta:
+        event.payload.meta &&
+        typeof event.payload.meta === 'object' &&
+        !Array.isArray(event.payload.meta)
+          ? (event.payload.meta as Record<string, unknown>)
+          : undefined,
     }));
+  }
+
+  private toSigningStatus(value: unknown): SigningProcessStatus | undefined {
+    return typeof value === 'string' &&
+      SIGNING_PROCESS_STATUSES.includes(value as SigningProcessStatus)
+      ? (value as SigningProcessStatus)
+      : undefined;
   }
 }

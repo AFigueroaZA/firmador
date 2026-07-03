@@ -103,7 +103,7 @@ export interface IdentityStatusResponse {
 }
 
 export interface PaymentEligibilityResponse {
-  mode: "demo";
+  mode: "mock" | "live";
   eligible: boolean;
   costCredits: number;
   availableCredits: number;

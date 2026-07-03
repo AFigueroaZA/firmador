@@ -1,11 +1,8 @@
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { ValidationPipe } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type {
+  AuthSession,
   CreateSigningProcessResponse,
   IdentityStatusResponse,
   PaymentEligibilityResponse,
@@ -16,11 +13,13 @@ import type { INestApplication } from '@nestjs/common';
 import { PDFDocument } from 'pdf-lib';
 import request from 'supertest';
 
-describe('Firmador flow (e2e)', () => {
+const describeSupabaseE2e =
+  process.env.RUN_SUPABASE_E2E === '1' ? describe : describe.skip;
+
+describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
   jest.setTimeout(30000);
 
   let app: INestApplication;
-  let tempRoot: string;
   let httpServer: Parameters<typeof request>[0];
   let adminPassword: string;
   let operatorPassword: string;
@@ -64,16 +63,37 @@ describe('Firmador flow (e2e)', () => {
     return cookies ?? [];
   };
 
+  const startRegistration = async () => {
+    const authorizeResponse = await request(httpServer)
+      .get('/api/registration/clave-unica/authorize')
+      .expect(200);
+    const authorization = authorizeResponse.body as { url: string };
+    expect(authorization.url).toContain(
+      '/api/registration/clave-unica/callback',
+    );
+
+    const callbackUrl = new URL(authorization.url);
+    const callbackResponse = await request(httpServer)
+      .get(`${callbackUrl.pathname}${callbackUrl.search}`)
+      .expect(302);
+    const redirectLocation = callbackResponse.get('Location') ?? '';
+    expect(redirectLocation).toContain('/register/complete?state=');
+
+    const state = new URL(redirectLocation).searchParams.get('state') ?? '';
+    expect(state).toBeTruthy();
+    return state;
+  };
+
   beforeAll(async () => {
-    tempRoot = await mkdtemp(join(tmpdir(), 'firmador-e2e-'));
-    process.env.STORAGE_ROOT = join(tempRoot, 'storage');
-    process.env.JWT_ACCESS_SECRET = randomUUID();
-    process.env.JWT_REFRESH_SECRET = randomUUID();
     process.env.ENCRYPTION_KEY = randomUUID();
     process.env.SIGNING_PROVIDER_MODE = 'mock';
     process.env.WEB_BASE_URL = 'http://localhost:4321';
     process.env.API_BASE_URL = 'http://localhost:3000';
-    process.env.SQLITE_LOCATION = join(tempRoot, 'firmador.sqlite');
+    process.env.DATABASE_SCHEMA = process.env.DATABASE_SCHEMA ?? 'public';
+    process.env.DATABASE_SYNCHRONIZE =
+      process.env.DATABASE_SYNCHRONIZE ?? 'false';
+    process.env.SUPABASE_STORAGE_BUCKET =
+      process.env.SUPABASE_STORAGE_BUCKET ?? 'documents';
     process.env.SEED_ADMIN_EMAIL = 'admin@firmador.local';
     adminPassword = randomUUID();
     process.env.SEED_ADMIN_PASSWORD = adminPassword;
@@ -102,9 +122,93 @@ describe('Firmador flow (e2e)', () => {
     if (app) {
       await app.close();
     }
-    if (existsSync(tempRoot)) {
-      await rm(tempRoot, { recursive: true, force: true });
-    }
+  });
+
+  it('registers a public user with ClaveUnica and allows later password login', async () => {
+    const state = await startRegistration();
+
+    const statusResponse = await request(httpServer)
+      .get(`/api/registration/${state}`)
+      .expect(200);
+    expect(statusResponse.body).toMatchObject({
+      status: 'VALIDATED',
+      profile: {
+        rut: '22.222.222-2',
+        nombres: 'Registro',
+        apellidoPaterno: 'Mock',
+        apellidoMaterno: 'Firmador',
+      },
+      missingFields: [
+        'telefono',
+        'numeroDocumento',
+        'fechaNacimiento',
+        'estadoCivil',
+      ],
+    });
+
+    const email = `registro-${randomUUID()}@firmador.local`;
+    const password = `Pass-${randomUUID()}`;
+    const completeResponse = await request(httpServer)
+      .post(`/api/registration/${state}/complete`)
+      .send({
+        email,
+        password,
+        telefono: '56912345678',
+        numeroDocumento: '123456789',
+        fechaNacimiento: '1990-01-10',
+        estadoCivil: 'Soltero',
+      })
+      .expect(201);
+
+    expect(completeResponse.get('Set-Cookie')).toEqual(
+      expect.arrayContaining([expect.stringContaining('firmador_access')]),
+    );
+    expect(completeResponse.body as AuthSession).toMatchObject({
+      user: {
+        email,
+        fullName: 'Registro Mock Firmador',
+        role: 'operator',
+      },
+    });
+
+    const loginResponse = await request(httpServer)
+      .post('/api/auth/login')
+      .send({ email, password })
+      .expect(201);
+    expect(loginResponse.get('Set-Cookie')).toEqual(
+      expect.arrayContaining([expect.stringContaining('firmador_access')]),
+    );
+  });
+
+  it('rejects registration completion with a duplicated email', async () => {
+    const state = await startRegistration();
+
+    await request(httpServer)
+      .post(`/api/registration/${state}/complete`)
+      .send({
+        email: 'admin@firmador.local',
+        password: `Pass-${randomUUID()}`,
+        telefono: '56912345678',
+        numeroDocumento: '123456789',
+        fechaNacimiento: '1990-01-10',
+        estadoCivil: 'Soltero',
+      })
+      .expect(409);
+  });
+
+  it('rejects registration completion with a duplicated RUN', async () => {
+    const secondState = await startRegistration();
+    await request(httpServer)
+      .post(`/api/registration/${secondState}/complete`)
+      .send({
+        email: `rut-b-${randomUUID()}@firmador.local`,
+        password: `Pass-${randomUUID()}`,
+        telefono: '56912345678',
+        numeroDocumento: '123456789',
+        fechaNacimiento: '1990-01-10',
+        estadoCivil: 'Soltero',
+      })
+      .expect(409);
   });
 
   it('enables the demo-first flow after mock identity onboarding', async () => {
@@ -204,7 +308,7 @@ describe('Firmador flow (e2e)', () => {
 
     const paymentBody = paymentResponse.body as PaymentEligibilityResponse;
     expect(paymentBody).toMatchObject({
-      mode: 'demo',
+      mode: 'mock',
       eligible: true,
       costCredits: 1,
       availableCredits: 1,

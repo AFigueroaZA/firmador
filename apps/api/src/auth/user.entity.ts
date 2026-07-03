@@ -1,42 +1,53 @@
-import type { UserRole } from '@firmador/shared';
-import { randomUUID } from 'node:crypto';
 import {
-  BeforeInsert,
   Column,
   CreateDateColumn,
   Entity,
-  PrimaryColumn,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { RoleEntity } from './role.entity';
 
 @Entity('users')
 export class UserEntity {
-  @PrimaryColumn('varchar')
+  @PrimaryGeneratedColumn('uuid')
   id!: string;
+
+  @Column({ name: 'role_id', type: 'uuid' })
+  roleId!: string;
+
+  @ManyToOne(() => RoleEntity, { eager: true })
+  @JoinColumn({ name: 'role_id' })
+  role!: RoleEntity;
+
+  @Column({ name: 'auth_user_id', type: 'uuid', nullable: true, unique: true })
+  authUserId!: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  rut!: string | null;
+
+  @Column({ name: 'first_name' })
+  firstName!: string;
+
+  @Column({ name: 'last_name' })
+  lastName!: string;
 
   @Column({ unique: true })
   email!: string;
 
-  @Column()
-  fullName!: string;
-
-  @Column({ type: 'varchar' })
-  role!: UserRole;
-
-  @Column()
-  passwordHash!: string;
-
   @Column({ type: 'varchar', nullable: true })
-  refreshTokenHash!: string | null;
+  phone!: string | null;
 
-  @CreateDateColumn()
+  @Column({ name: 'is_active', type: 'boolean' })
+  isActive!: boolean;
+
+  @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
+  lastLoginAt!: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
-
-  @BeforeInsert()
-  assignId() {
-    this.id = this.id ?? randomUUID();
-  }
 }
