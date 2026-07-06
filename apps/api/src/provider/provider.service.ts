@@ -123,11 +123,37 @@ export class ProviderService {
       ]),
     );
     if (!claveIdValidation) {
+      // Log the response shape (keys only, no PII) so we can map the field.
+      const shape =
+        userInfo.raw && typeof userInfo.raw === 'object'
+          ? JSON.stringify(this.describeShape(userInfo.raw))
+          : typeof userInfo.raw;
+      this.logger.warn(
+        `ClaveUnica users/info returned no idValidacion. Response shape: ${shape}`,
+      );
       throw new Error(
         'ClaveUnica user info did not include an idValidacion for the enrollment.',
       );
     }
     return { claveIdValidation };
+  }
+
+  /** Nested key structure of a provider payload, values omitted (no PII). */
+  private describeShape(value: unknown, depth = 0): unknown {
+    if (depth > 3 || value === null || typeof value !== 'object') {
+      return typeof value;
+    }
+    if (Array.isArray(value)) {
+      return value.length
+        ? [this.describeShape(value[0], depth + 1)]
+        : [];
+    }
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        this.describeShape(child, depth + 1),
+      ]),
+    );
   }
 
   async completeAuthorization(input: {
