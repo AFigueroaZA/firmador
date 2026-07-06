@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type {
   ChallengePayload,
+  ChallengeQuestion,
   ExternalIdentitySummary,
   SignOptions,
 } from '@firmador/shared';
@@ -24,6 +25,7 @@ import {
   normalizeProfileForChallenge,
   normalizeProfileForRa,
 } from './utils/provider-normalization';
+import { coerceString, deepFindValue } from './utils/provider-response.util';
 
 @Injectable()
 export class ProviderService {
@@ -85,7 +87,10 @@ export class ProviderService {
           questions: [1, 2, 3, 4].map((id) => ({
             id,
             prompt: `Pregunta mock ${id}`,
-            options: [1, 2, 3, 4, 5],
+            options: [1, 2, 3, 4, 5].map((value) => ({
+              value,
+              label: `Alternativa ${value}`,
+            })),
           })),
         },
         providerContext: {
@@ -117,6 +122,13 @@ export class ProviderService {
       accessToken: tokenResult.accessToken,
       code: callbackCode,
     });
+    const claveIdValidation = coerceString(
+      deepFindValue(userInfo.raw, [
+        'idValidacion',
+        'idValidation',
+        'validationId',
+      ]),
+    );
     const externalProfile = this.mergeExternalProfileOverrides(
       userInfo.profile,
       input.providerContext?.externalProfileOverrides,
@@ -148,6 +160,7 @@ export class ProviderService {
         ...(input.providerContext ?? {}),
         claveCode: callbackCode,
         claveAccessToken: tokenResult.accessToken,
+        claveIdValidation,
         challengeToken: challengeToken.token,
         idChallenge: challenge.idChallenge,
         idValidation: challenge.idValidation,
@@ -158,6 +171,60 @@ export class ProviderService {
         stage: 'external-auth',
         tokenExchange: tokenResult.raw,
         userInfo: userInfo.raw,
+        challenge: challenge.raw,
+      },
+    };
+  }
+
+  async createChallengeForProfile(input: {
+    profile: ExternalProfile;
+  }): Promise<{
+    challenge: { idChallenge: string; questions: ChallengeQuestion[] };
+    providerContext: ProviderContext;
+    auditMeta?: Record<string, unknown>;
+  }> {
+    if (this.config.signingProviderMode === 'mock') {
+      return {
+        challenge: {
+          idChallenge: `mock-challenge-${randomUUID()}`,
+          questions: [1, 2, 3, 4].map((id) => ({
+            id,
+            prompt: `Pregunta mock ${id}`,
+            options: [1, 2, 3, 4, 5].map((value) => ({
+              value,
+              label: `Alternativa ${value}`,
+            })),
+          })),
+        },
+        providerContext: {
+          challengeToken: 'mock-token',
+          externalProfile: input.profile,
+        },
+        auditMeta: { provider: 'mock', stage: 'enrollment-challenge' },
+      };
+    }
+
+    this.assertChallengeProfileComplete(input.profile);
+    const challengeToken = await this.challengeClient.generateToken();
+    const challenge = await this.challengeClient.createChallenge(
+      normalizeProfileForChallenge(input.profile),
+      challengeToken.token,
+    );
+
+    return {
+      challenge: {
+        idChallenge: challenge.idChallenge,
+        questions: challenge.questions,
+      },
+      providerContext: {
+        challengeToken: challengeToken.token,
+        idChallenge: challenge.idChallenge,
+        idValidation: challenge.idValidation ?? undefined,
+        externalProfile: input.profile,
+      },
+      auditMeta: {
+        provider: 'live',
+        stage: 'enrollment-challenge',
         challenge: challenge.raw,
       },
     };
@@ -219,9 +286,21 @@ export class ProviderService {
       throw new Error('Provider context is incomplete for RA request.');
     }
 
+    // The provider expects the ClaveUnica and challenge validation ids
+    // together, comma-separated (see WSIngresoSolicitud sample payload).
+    const idValidation = [
+      input.providerContext.claveIdValidation,
+      input.providerContext.idValidation,
+    ]
+      .filter(
+        (value, index, values): value is string =>
+          Boolean(value) && values.indexOf(value) === index,
+      )
+      .join(',');
+
     const result = await this.raClient.createRequest({
       profile: normalizeProfileForRa(input.providerContext.externalProfile),
-      idValidation: input.providerContext.idValidation,
+      idValidation,
     });
 
     return {

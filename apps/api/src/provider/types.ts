@@ -27,6 +27,7 @@ export interface ExternalProfileOverrides extends Record<string, unknown> {
 export interface ProviderContext extends Record<string, unknown> {
   claveCode?: string;
   claveAccessToken?: string;
+  claveIdValidation?: string;
   challengeToken?: string;
   idChallenge?: string;
   idValidation?: string;

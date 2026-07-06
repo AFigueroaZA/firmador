@@ -23,7 +23,7 @@ export class SignatureRegistrationEntity {
   @Column()
   provider!: string;
 
-  @Column({ name: 'provider_registration_id', type: 'varchar', nullable: true })
+  @Column({ name: 'provider_registration_id', type: 'text', nullable: true })
   providerRegistrationId!: string | null;
 
   @Column({ name: 'certificate_subject', type: 'text', nullable: true })

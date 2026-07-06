@@ -2,6 +2,7 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import { XMLParser } from 'fast-xml-parser';
 import { loadAppConfig } from '../../config/app.config';
 import type { ExternalProfile } from '../types';
+import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
@@ -17,7 +18,7 @@ export class RaClient {
     profile: ExternalProfile;
     idValidation: string;
   }) {
-    const response = await fetch(this.config.providerRaUrl, {
+    const response = await providerFetch(this.config.providerRaUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml;charset=UTF-8',
@@ -56,7 +57,9 @@ export class RaClient {
 
     const rawText = await response.text();
     if (!response.ok) {
-      throw new BadGatewayException('RA certificate request failed.');
+      throw new BadGatewayException(
+        `RA certificate request failed with status ${response.status}: ${rawText.slice(0, 500)}`,
+      );
     }
 
     const data = this.parser.parse(rawText) as Record<string, unknown>;

@@ -2,6 +2,7 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import type { SignOptions } from '@firmador/shared';
 import { XMLParser } from 'fast-xml-parser';
 import { loadAppConfig } from '../../config/app.config';
+import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
@@ -21,7 +22,7 @@ export class DocumentExchangeClient {
     pinFirma?: string;
   }) {
     const url = `${this.config.providerEsignerUrl}/WSIntercambiaDocSoap`;
-    const response = await fetch(url, {
+    const response = await providerFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml;charset=UTF-8',
@@ -39,7 +40,9 @@ export class DocumentExchangeClient {
 
     const rawText = await response.text();
     if (!response.ok) {
-      throw new BadGatewayException('Document signing exchange failed.');
+      throw new BadGatewayException(
+        `Document signing exchange failed with status ${response.status}: ${rawText.slice(0, 500)}`,
+      );
     }
 
     const data = this.parser.parse(rawText) as Record<string, unknown>;
@@ -55,7 +58,7 @@ export class DocumentExchangeClient {
 
     if (!base64Document.startsWith('JVBER')) {
       throw new BadGatewayException(
-        'Signing response did not include a PDF payload.',
+        `Signing response did not include a PDF payload: ${rawText.slice(0, 500)}`,
       );
     }
 

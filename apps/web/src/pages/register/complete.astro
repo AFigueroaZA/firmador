@@ -59,20 +59,44 @@ const profile = registration.profile;
           <input class="field mt-2" name="password" minlength="8" required type="password" />
         </label>
         <label class="text-sm font-medium text-slate-700">
-          Telefono
-          <input class="field mt-2" name="telefono" required value={profile.telefono ?? ""} />
+          Telefono celular
+          <input
+            class="field mt-2"
+            inputmode="numeric"
+            name="telefono"
+            pattern="9[0-9]{8}"
+            placeholder="912345678"
+            required
+            title="Celular chileno de 9 dígitos, comenzando con 9 (ej: 912345678)"
+            value={profile.telefono ?? ""}
+          />
+          <span class="mt-1 block text-xs font-normal text-slate-500">9 dígitos, sin +56 (ej: 912345678)</span>
         </label>
         <label class="text-sm font-medium text-slate-700">
-          Numero de documento
-          <input class="field mt-2" name="numeroDocumento" required value={profile.numeroDocumento ?? ""} />
+          Numero de documento (serie de la cedula)
+          <input
+            class="field mt-2"
+            name="numeroDocumento"
+            pattern="[A-Za-z]?[0-9.\-\s]{6,13}"
+            placeholder="A012345678"
+            required
+            title="Número de documento/serie de tu cédula, ej: A012345678 o 123456789"
+            value={profile.numeroDocumento ?? ""}
+          />
+          <span class="mt-1 block text-xs font-normal text-slate-500">Aparece en el frente de tu cédula (ej: A012345678)</span>
         </label>
         <label class="text-sm font-medium text-slate-700">
           Fecha de nacimiento
-          <input class="field mt-2" name="fechaNacimiento" placeholder="AAAA-MM-DD" required value={profile.fechaNacimiento ?? ""} />
+          <input class="field mt-2" name="fechaNacimiento" required type="date" value={profile.fechaNacimiento ?? ""} />
         </label>
         <label class="text-sm font-medium text-slate-700">
           Estado civil
-          <input class="field mt-2" name="estadoCivil" required value={profile.estadoCivil ?? ""} />
+          <select class="field mt-2" name="estadoCivil" required>
+            <option value="">Selecciona una opción</option>
+            {["Soltero", "Casado", "Divorciado", "Viudo", "Separado", "Conviviente Civil"].map((option) => (
+              <option selected={profile.estadoCivil === option} value={option}>{option}</option>
+            ))}
+          </select>
         </label>
       </div>
 
@@ -99,15 +123,24 @@ const profile = registration.profile;
 
       if (!response.ok) {
         if (errorBox) {
+          let detail = "";
+          try {
+            const body = await response.json();
+            detail = Array.isArray(body.message)
+              ? body.message.join(" ")
+              : (body.message ?? "");
+          } catch {
+            detail = "";
+          }
           errorBox.textContent = response.status === 409
             ? "Ya existe una cuenta con estos datos."
-            : "No se pudo completar el registro.";
+            : detail || "No se pudo completar el registro.";
           errorBox.classList.remove("hidden");
         }
         return;
       }
 
-      window.location.assign("/dashboard");
+      window.location.assign("/enrollment/challenge");
     });
   </script>
 </AppLayout>

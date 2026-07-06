@@ -8,6 +8,7 @@ import { loadAppConfig } from './config/app.config';
 import { validateConfig } from './config/env.validation';
 import { createTypeOrmOptions } from './database/typeorm.config';
 import { DocumentsModule } from './documents/documents.module';
+import { EnrollmentModule } from './enrollment/enrollment.module';
 import { HistoryModule } from './history/history.module';
 import { IdentityModule } from './identity/identity.module';
 import { ProviderModule } from './provider/provider.module';
@@ -36,6 +37,7 @@ import { SupabaseModule } from './supabase/supabase.module';
     DocumentsModule,
     AuditModule,
     IdentityModule,
+    EnrollmentModule,
     RegistrationModule,
     ProviderModule,
     SigningModule,

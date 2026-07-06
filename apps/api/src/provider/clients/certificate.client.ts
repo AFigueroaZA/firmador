@@ -2,6 +2,7 @@ import { BadGatewayException, Injectable } from '@nestjs/common';
 import type { SignOptions } from '@firmador/shared';
 import { XMLParser } from 'fast-xml-parser';
 import { loadAppConfig } from '../../config/app.config';
+import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
@@ -107,7 +108,7 @@ export class CertificateClient {
     imageBuffer?: Buffer | null;
   }) {
     const url = `${this.config.providerEsignerUrl}/WSDescargaCertificadoConfPinFirma`;
-    const response = await fetch(url, {
+    const response = await providerFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/xml;charset=UTF-8',
@@ -133,7 +134,7 @@ export class CertificateClient {
     const rawText = await response.text();
     if (!response.ok) {
       throw new BadGatewayException(
-        'Certificate download/configuration failed.',
+        `Certificate download/configuration failed with status ${response.status}: ${rawText.slice(0, 500)}`,
       );
     }
 

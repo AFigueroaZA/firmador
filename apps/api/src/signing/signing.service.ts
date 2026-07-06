@@ -16,9 +16,18 @@ import type {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Express } from 'express';
-import { Raw, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import type { RequestUser } from '../auth/interfaces/request-user.interface';
+import {
+  FECHA_NACIMIENTO_PATTERN,
+  NUMERO_DOCUMENTO_PATTERN,
+  TELEFONO_PATTERN,
+  normalizeEstadoCivil,
+  normalizeFechaNacimiento,
+  normalizeNumeroDocumento,
+  normalizeTelefono,
+} from '../common/utils/profile-fields';
 import { statusToNextStep } from '../common/utils/signing-next-step';
 import { loadAppConfig } from '../config/app.config';
 import { DocumentsModule } from '../documents/documents.module';
@@ -264,7 +273,11 @@ export class SigningService {
     return aliveItems;
   }
 
-  async getAuthorizationUrl(requestUser: RequestUser, processId: string) {
+  async getAuthorizationUrl(
+    requestUser: RequestUser,
+    processId: string,
+    options?: { skipEnrollmentRedirect?: boolean },
+  ) {
     const process = await this.getAccessibleProcess(requestUser, processId);
     await this.ensureNotExpired(process);
 
@@ -275,6 +288,40 @@ export class SigningService {
     }
 
     validateSignOptionsForPdf(process.signOptions, process.pdfMetadata);
+
+    if (this.config.signingProviderMode === 'live') {
+      const active = await this.findActiveLiveRegistration(requestUser.id);
+      if (active) {
+        const signed = await this.signWithExistingRegistration(
+          requestUser,
+          process,
+          active.registration,
+          active.context,
+        );
+        if (signed) {
+          return {
+            url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
+          };
+        }
+      }
+
+      if (!options?.skipEnrollmentRedirect) {
+        const pending = await this.registrationRepository.findOne({
+          where: {
+            userId: requestUser.id,
+            provider: 'FIRMA_CL',
+            status: 'PENDING',
+          },
+          order: { createdAt: 'DESC' },
+        });
+        if (pending) {
+          const next = encodeURIComponent(`/sign/${process.id}/payment`);
+          return {
+            url: `${this.config.webBaseUrl}/enrollment/challenge?next=${next}`,
+          };
+        }
+      }
+    }
 
     const state = randomUUID();
     const successRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
@@ -291,10 +338,31 @@ export class SigningService {
       failedRedirect,
     });
 
+    // ClaveUnica only returns names/RUN/email; complete the challenge profile
+    // with the data collected at registration (user_identities), letting any
+    // per-process overrides win.
+    const identity = await this.identityService.getStatus(requestUser);
+    const identityOverrides: ExternalProfileOverrides = {};
+    if (identity.profile?.numeroDocumento) {
+      identityOverrides.numeroDocumento = identity.profile.numeroDocumento;
+    }
+    if (identity.profile?.fechaNacimiento) {
+      identityOverrides.fechaNacimiento = identity.profile.fechaNacimiento;
+    }
+    if (identity.profile?.estadoCivil) {
+      identityOverrides.estadoCivil = identity.profile.estadoCivil;
+    }
+    if (identity.profile?.telefono) {
+      identityOverrides.telefono = identity.profile.telefono;
+    }
+
     process.externalAuthState = state;
     process.providerContextEncrypted = this.sealedPayloadService.sealJson({
       ...((result.providerContext ?? {}) as Record<string, unknown>),
-      externalProfileOverrides: process.externalProfileOverrides ?? undefined,
+      externalProfileOverrides: {
+        ...identityOverrides,
+        ...(process.externalProfileOverrides ?? {}),
+      },
     });
     const fromStatus = process.status;
     process.status = 'EXTERNAL_AUTH_PENDING';
@@ -325,16 +393,24 @@ export class SigningService {
     await this.ensureNotExpired(process);
     const identity = await this.identityService.getStatus(requestUser);
     const eligible = identity.canSign && process.status === 'CONFIGURED';
+    const activeRegistration =
+      eligible && this.config.signingProviderMode === 'live'
+        ? await this.findActiveLiveRegistration(requestUser.id)
+        : null;
 
     return {
       mode: this.config.signingProviderMode,
       eligible,
       costCredits: 1,
       availableCredits: eligible ? 1 : 0,
+      requiresExternalAuthorization:
+        this.config.signingProviderMode === 'live' && !activeRegistration,
       message: eligible
         ? this.config.signingProviderMode === 'mock'
           ? 'Demo credit available for this signing process.'
-          : 'Ready to start external provider authorization.'
+          : activeRegistration
+            ? 'Active certificate found. The document will be signed directly without repeating identity validation.'
+            : 'Ready to start external provider authorization.'
         : 'Complete identity validation and signature placement before signing.',
     };
   }
@@ -447,13 +523,16 @@ export class SigningService {
     code?: string;
     error?: string;
   }) {
-    const process = await this.processRepository.findOne({
-      where: {
-        metadata: Raw((alias) => `${alias}->>'externalAuthState' = :state`, {
-          state: input.state,
-        }),
-      },
-    });
+    const match = await this.processRepository
+      .createQueryBuilder('process')
+      .select('process.id', 'id')
+      .where(`process.metadata ->> 'externalAuthState' = :state`, {
+        state: input.state,
+      })
+      .getRawOne<{ id: string }>();
+    const process = match
+      ? await this.processRepository.findOne({ where: { id: match.id } })
+      : null;
 
     if (!process) {
       throw new NotFoundException(
@@ -590,6 +669,25 @@ export class SigningService {
         meta: certificateResult.auditMeta,
       });
 
+      const registration = await this.persistLiveRegistration(
+        requestUser.id,
+        certificateResult.providerContext,
+        process,
+      );
+      if (registration) {
+        await this.auditService.record({
+          processId: process.id,
+          actor: 'system',
+          type: 'SIGNATURE_REGISTRATION_SAVED',
+          message:
+            'Certificate enrollment stored; future signings will not require ClaveUnica re-validation.',
+          meta: {
+            signatureRegistrationId: registration.id,
+            validUntil: registration.validUntil?.toISOString(),
+          },
+        });
+      }
+
       const originalPdf = await this.fileStore.read(
         process.originalStoragePath,
       );
@@ -689,6 +787,153 @@ export class SigningService {
     return process;
   }
 
+  private async findActiveLiveRegistration(userId: string) {
+    const registration = await this.registrationRepository.findOne({
+      where: { userId, provider: 'FIRMA_CL', status: 'ACTIVE' },
+      order: { createdAt: 'DESC' },
+    });
+    if (!registration) {
+      return null;
+    }
+
+    if (
+      registration.validUntil &&
+      registration.validUntil.getTime() <= Date.now()
+    ) {
+      registration.status = 'EXPIRED';
+      await this.registrationRepository.save(registration);
+      return null;
+    }
+
+    const context = this.sealedPayloadService.openJson<ProviderContext>(
+      registration.providerContextEncrypted,
+    );
+    if (!context?.pinFirma) {
+      return null;
+    }
+
+    return { registration, context };
+  }
+
+  private async signWithExistingRegistration(
+    requestUser: RequestUser,
+    process: SigningProcessEntity,
+    registration: SignatureRegistrationEntity,
+    providerContext: ProviderContext,
+  ) {
+    const fromStatus = process.status;
+    try {
+      process.status = 'SIGNING';
+      await this.saveProcess(process);
+      await this.auditService.record({
+        processId: process.id,
+        actorUserId: requestUser.id,
+        actor: requestUser.email,
+        type: 'EXTERNAL_AUTH_SKIPPED',
+        message:
+          'Valid certificate enrollment found; signing directly without ClaveUnica re-validation.',
+        fromStatus,
+        toStatus: process.status,
+        meta: {
+          signatureRegistrationId: registration.id,
+          validUntil: registration.validUntil?.toISOString(),
+        },
+      });
+
+      const imageBuffer = process.signatureImageStoragePath
+        ? await this.fileStore.read(process.signatureImageStoragePath)
+        : null;
+      const originalPdf = await this.fileStore.read(
+        process.originalStoragePath,
+      );
+      const signResult = await this.providerService.signDocument({
+        providerContext,
+        fileName: process.originalFileName,
+        pdfBuffer: originalPdf,
+        signOptions: process.signOptions,
+        imageBuffer,
+      });
+
+      process.signedStoragePath = await this.fileStore.save(
+        process.id,
+        'signed',
+        signResult.signedPdfBuffer,
+      );
+      process.providerContextEncrypted = this.sealedPayloadService.sealJson({
+        ...providerContext,
+        signatureRegistrationId: registration.id,
+      });
+      process.status = 'SIGNED';
+      process.signedAt = new Date();
+      process.errorMessage = null;
+      await this.saveProcess(process);
+      await this.auditService.record({
+        processId: process.id,
+        actor: 'system',
+        type: 'DOCUMENT_SIGNED',
+        message: 'Signed PDF received from provider using stored enrollment.',
+        fromStatus: 'SIGNING',
+        toStatus: 'SIGNED',
+        meta: {
+          ...signResult.auditMeta,
+          signatureRegistrationId: registration.id,
+        },
+      });
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unexpected signing failure.';
+      process.status = fromStatus;
+      await this.saveProcess(process);
+      await this.auditService.record({
+        processId: process.id,
+        actor: 'system',
+        type: 'REGISTRATION_SIGN_FAILED',
+        message: `Direct signing with stored enrollment failed (${message}); falling back to full provider authorization.`,
+        fromStatus: 'SIGNING',
+        toStatus: process.status,
+        meta: { signatureRegistrationId: registration.id },
+      });
+      return false;
+    }
+  }
+
+  private async persistLiveRegistration(
+    userId: string,
+    providerContext: ProviderContext,
+    process: SigningProcessEntity,
+  ) {
+    if (this.config.signingProviderMode !== 'live') {
+      return null;
+    }
+    if (!providerContext.pinFirma) {
+      return null;
+    }
+
+    const now = new Date();
+    const registration = this.registrationRepository.create({
+      userId,
+      provider: 'FIRMA_CL',
+      certificateSubject:
+        providerContext.externalProfile?.rut ??
+        process.externalIdentity?.run ??
+        null,
+      status: 'ACTIVE',
+      validFrom: now,
+      validUntil: new Date(
+        now.getTime() +
+          this.config.certificateValidityDays * 24 * 60 * 60 * 1000,
+      ),
+      providerContextEncrypted: this.sealedPayloadService.sealJson({
+        pinFirma: providerContext.pinFirma,
+        configurationName: providerContext.configurationName,
+        nroSolicitud: providerContext.nroSolicitud,
+        externalProfile: providerContext.externalProfile,
+      }),
+    });
+    return this.registrationRepository.save(registration);
+  }
+
   private async getOrCreateMockRegistration(userId: string) {
     const now = new Date();
     const existing = await this.registrationRepository.findOne({
@@ -769,13 +1014,13 @@ export class SigningService {
     }
 
     const existing = await this.assetRepository.findOne({
-      where: { signingProcessId: process.id, assetType: 'VISIBLE_SIGNATURE' },
+      where: { signingProcessId: process.id, assetType: 'VISUAL_SIGNATURE' },
     });
     await this.assetRepository.save(
       this.assetRepository.create({
         id: existing?.id,
         signingProcessId: process.id,
-        assetType: 'VISIBLE_SIGNATURE',
+        assetType: 'VISUAL_SIGNATURE',
         pageNumber: options.page,
         x: options.x ?? 0,
         y: options.y ?? 0,
@@ -804,17 +1049,47 @@ export class SigningService {
   ): ExternalProfileOverrides | null {
     const overrides: ExternalProfileOverrides = {};
 
-    const setString = (key: keyof ExternalProfileOverrides) => {
-      const value = fields[key]?.trim();
-      if (value) {
-        overrides[key] = value;
+    const setNormalized = (
+      key: keyof ExternalProfileOverrides,
+      normalize: (value: unknown) => unknown,
+      pattern: RegExp | null,
+      message: string,
+    ) => {
+      const raw = fields[key]?.trim();
+      if (!raw) {
+        return;
       }
+      const value = normalize(raw);
+      if (typeof value !== 'string' || (pattern && !pattern.test(value))) {
+        throw new BadRequestException(message);
+      }
+      overrides[key] = value;
     };
 
-    setString('numeroDocumento');
-    setString('fechaNacimiento');
-    setString('estadoCivil');
-    setString('telefono');
+    setNormalized(
+      'numeroDocumento',
+      normalizeNumeroDocumento,
+      NUMERO_DOCUMENTO_PATTERN,
+      'numeroDocumento debe ser el número de serie/documento de la cédula, sin puntos.',
+    );
+    setNormalized(
+      'fechaNacimiento',
+      normalizeFechaNacimiento,
+      FECHA_NACIMIENTO_PATTERN,
+      'fechaNacimiento debe tener formato AAAA-MM-DD.',
+    );
+    setNormalized(
+      'estadoCivil',
+      normalizeEstadoCivil,
+      null,
+      'estadoCivil inválido.',
+    );
+    setNormalized(
+      'telefono',
+      normalizeTelefono,
+      TELEFONO_PATTERN,
+      'telefono debe ser un celular chileno de 9 dígitos.',
+    );
 
     return Object.keys(overrides).length > 0 ? overrides : null;
   }

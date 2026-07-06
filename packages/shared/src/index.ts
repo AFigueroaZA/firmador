@@ -59,10 +59,15 @@ export interface ChallengePayload {
   answers: ChallengeAnswer[];
 }
 
+export interface ChallengeOption {
+  value: number;
+  label: string;
+}
+
 export interface ChallengeQuestion {
   id: number;
   prompt: string;
-  options: number[];
+  options: ChallengeOption[];
 }
 
 export interface ExternalIdentitySummary {
@@ -108,6 +113,20 @@ export interface PaymentEligibilityResponse {
   costCredits: number;
   availableCredits: number;
   message: string;
+  requiresExternalAuthorization: boolean;
+}
+
+export type EnrollmentStatus = "NONE" | "PENDING" | "ACTIVE";
+
+export interface EnrollmentChallenge {
+  idChallenge: string;
+  questions: ChallengeQuestion[];
+}
+
+export interface EnrollmentStatusResponse {
+  status: EnrollmentStatus;
+  validUntil: string | null;
+  challenge: EnrollmentChallenge | null;
 }
 
 export interface AuditEventSummary {

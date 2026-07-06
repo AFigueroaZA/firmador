@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseGuards,
@@ -67,8 +68,11 @@ export class SigningController {
   async getAuthorizationUrl(
     @CurrentUser() requestUser: RequestUser,
     @Param('id') processId: string,
+    @Query('skipEnrollment') skipEnrollment?: string,
   ) {
-    return this.signingService.getAuthorizationUrl(requestUser, processId);
+    return this.signingService.getAuthorizationUrl(requestUser, processId, {
+      skipEnrollmentRedirect: skipEnrollment === '1',
+    });
   }
 
   @Get('processes/:id/payment')

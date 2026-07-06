@@ -1,5 +1,6 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import { loadAppConfig } from '../../config/app.config';
+import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
@@ -9,6 +10,7 @@ import {
 @Injectable()
 export class ClaveUnicaClient {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(ClaveUnicaClient.name);
 
   private readonly apiHeaders = {
     'X-API-APP': this.config.providerUsername,
@@ -19,7 +21,7 @@ export class ClaveUnicaClient {
     successRedirect: string;
     failedRedirect: string;
   }) {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/tokens/request`,
       {
         method: 'POST',
@@ -46,7 +48,7 @@ export class ClaveUnicaClient {
       );
     }
 
-    const authResponse = await fetch(
+    const authResponse = await providerFetch(
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/tokens/${encodeURIComponent(
         code,
       )}/authorize`,
@@ -85,7 +87,7 @@ export class ClaveUnicaClient {
   }
 
   async exchangeToken(code: string) {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/tokens/${encodeURIComponent(
         code,
       )}`,
@@ -119,7 +121,7 @@ export class ClaveUnicaClient {
   }
 
   async getUserInfo(input: { accessToken: string; code: string }) {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerClaveUnicaBaseUrl}/api/v1/users/info`,
       {
         method: 'POST',
@@ -138,8 +140,18 @@ export class ClaveUnicaClient {
       );
     }
 
+    const profile = normalizeExternalProfile(data);
+    if (!profile.rut || !profile.nombres || !profile.apellidoPaterno) {
+      // Surface the raw payload so unexpected response shapes can be mapped.
+      this.logger.warn(
+        `ClaveUnica users/info response could not be fully normalized (rut=${
+          profile.rut || 'EMPTY'
+        }). Raw payload: ${JSON.stringify(data)}`,
+      );
+    }
+
     return {
-      profile: normalizeExternalProfile(data),
+      profile,
       raw: data,
     };
   }

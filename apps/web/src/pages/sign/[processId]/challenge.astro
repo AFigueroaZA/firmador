@@ -39,7 +39,7 @@ if (!challenge) {
           <select class="field mt-2" data-question={question.id} required>
             <option value="">Selecciona una opción</option>
             {question.options.map((option) => (
-              <option value={option}>{option}</option>
+              <option value={option.value}>{option.label}</option>
             ))}
           </select>
         </label>

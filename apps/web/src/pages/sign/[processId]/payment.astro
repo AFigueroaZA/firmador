@@ -53,7 +53,13 @@ const payment = paymentResponse.ok
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
           <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Autorizacion" : "Saldo disponible"}</dt>
-          <dd>{payment?.mode === "live" ? "Requerida" : payment?.availableCredits ?? 0}</dd>
+          <dd>
+            {payment?.mode === "live"
+              ? payment?.requiresExternalAuthorization
+                ? "Requerida"
+                : "No requerida (certificado vigente)"
+              : payment?.availableCredits ?? 0}
+          </dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
           <dt class="font-semibold text-slate-700">Estado</dt>
@@ -66,10 +72,19 @@ const payment = paymentResponse.ok
           {payment?.message ?? "No se pudo validar el saldo demo."}
         </div>
       )}
+      {payment?.eligible && payment?.mode === "live" && !payment?.requiresExternalAuthorization && (
+        <div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Ya cuentas con un certificado vigente: el documento se firmara directamente, sin repetir la validacion con Clave Unica.
+        </div>
+      )}
 
       <div class="mt-6 flex flex-wrap gap-3">
         <button class="button-primary" disabled={!payment?.eligible} id="start-signing-button" type="button">
-          {payment?.mode === "live" ? "Autorizar firma" : "Firmar documento"}
+          {payment?.mode === "live"
+            ? payment?.requiresExternalAuthorization
+              ? "Autorizar firma"
+              : "Firmar documento"
+            : "Firmar documento"}
         </button>
         <a class="button-secondary" href="/sign/new">Elegir otro PDF</a>
       </div>

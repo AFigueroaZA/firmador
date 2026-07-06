@@ -26,7 +26,9 @@ export class AuditService {
     const entity = this.auditRepository.create({
       processId: input.processId,
       paymentId: null,
-      provider: 'firmador',
+      // Must be one of the values allowed by chk_provider_events_provider
+      // (FIRMA_CL, CLAVE_UNICA, WEBPAY, OTP, PIN, SYSTEM).
+      provider: 'SYSTEM',
       eventType: input.type,
       externalEventId: null,
       status: input.toStatus ?? input.fromStatus ?? null,

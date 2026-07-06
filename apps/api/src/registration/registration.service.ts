@@ -12,9 +12,14 @@ import type { Response } from 'express';
 import { Repository } from 'typeorm';
 import { AuthService } from '../auth/auth.service';
 import { loadAppConfig } from '../config/app.config';
+import { EnrollmentService } from '../enrollment/enrollment.service';
 import { UserIdentityEntity } from '../identity/entities/user-identity.entity';
 import { ClaveUnicaClient } from '../provider/clients/clave-unica.client';
 import type { ExternalProfile } from '../provider/types';
+import {
+  coerceString,
+  deepFindValue,
+} from '../provider/utils/provider-response.util';
 import type { CompleteRegistrationDto } from './dto/complete-registration.dto';
 import { RegistrationIntentEntity } from './entities/registration-intent.entity';
 
@@ -36,6 +41,7 @@ export class RegistrationService {
     private readonly identityRepository: Repository<UserIdentityEntity>,
     private readonly authService: AuthService,
     private readonly claveUnicaClient: ClaveUnicaClient,
+    private readonly enrollmentService: EnrollmentService,
   ) {}
 
   async createAuthorization() {
@@ -175,6 +181,27 @@ export class RegistrationService {
     intent.completedUserId = user.id;
     await this.registrationRepository.save(intent);
 
+    // Best-effort: start the provider enrollment (challenge) right away while
+    // the ClaveUnica validation is fresh. Account creation must not fail if
+    // the provider is unavailable; the challenge page can retry later.
+    await this.enrollmentService.beginEnrollment(
+      user.id,
+      {
+        rut: intent.profile.rut,
+        nombres: intent.profile.nombres,
+        apellidoPaterno: intent.profile.apellidoPaterno,
+        apellidoMaterno: intent.profile.apellidoMaterno,
+        email,
+        telefono: dto.telefono.trim(),
+        numeroDocumento: dto.numeroDocumento.trim(),
+        fechaNacimiento: dto.fechaNacimiento.trim(),
+        estadoCivil: dto.estadoCivil.trim(),
+      },
+      typeof intent.profile.claveIdValidation === 'string'
+        ? intent.profile.claveIdValidation
+        : undefined,
+    );
+
     return this.authService.issueSessionForCredentials({
       email,
       password: dto.password,
@@ -182,7 +209,7 @@ export class RegistrationService {
     });
   }
 
-  private async getLiveProfile(code: string) {
+  private async getLiveProfile(code: string): Promise<ExternalProfile> {
     if (!code) {
       throw new BadRequestException('Authorization code is required.');
     }
@@ -191,7 +218,16 @@ export class RegistrationService {
       accessToken: tokenResult.accessToken,
       code,
     });
-    return userInfo.profile;
+    // Keep the provider validation id from this ClaveUnica session: the RA
+    // enrollment expects it comma-joined with the challenge validation id.
+    const claveIdValidation = coerceString(
+      deepFindValue(userInfo.raw, [
+        'idValidacion',
+        'idValidation',
+        'validationId',
+      ]),
+    );
+    return { ...userInfo.profile, claveIdValidation };
   }
 
   private async findIntent(state: string) {

@@ -1,16 +1,19 @@
-import { BadGatewayException, Injectable } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import type { ChallengePayload } from '@firmador/shared';
 import { loadAppConfig } from '../../config/app.config';
 import type { ExternalProfile } from '../types';
+import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
+  extractChallengeQuestions,
   normalizeChallengeQuestions,
 } from '../utils/provider-response.util';
 
 @Injectable()
 export class ChallengeClient {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(ChallengeClient.name);
 
   private readonly apiHeaders = {
     'X-API-APP': this.config.providerUsername,
@@ -18,7 +21,7 @@ export class ChallengeClient {
   };
 
   async generateToken() {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerChallengeBaseUrl}/tokens/generarToken`,
       {
         headers: this.apiHeaders,
@@ -26,7 +29,9 @@ export class ChallengeClient {
     );
     const rawText = await response.text();
     if (!response.ok) {
-      throw new BadGatewayException('Challenge token generation failed.');
+      throw new BadGatewayException(
+        `Challenge token generation failed with status ${response.status}: ${rawText.slice(0, 500)}`,
+      );
     }
 
     try {
@@ -44,7 +49,7 @@ export class ChallengeClient {
   }
 
   async createChallenge(profile: ExternalProfile, bearerToken: string) {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerChallengeBaseUrl}/validacionChallenge/ingresoValidacionChallenge`,
       {
         method: 'POST',
@@ -53,14 +58,25 @@ export class ChallengeClient {
           'Content-Type': 'application/json;charset=UTF-8',
           Authorization: this.authorizationHeader(bearerToken),
         },
-        body: JSON.stringify(profile),
+        // Send exactly the fields the provider contract expects.
+        body: JSON.stringify({
+          rut: profile.rut,
+          numeroDocumento: profile.numeroDocumento,
+          nombres: profile.nombres,
+          apellidoPaterno: profile.apellidoPaterno,
+          apellidoMaterno: profile.apellidoMaterno,
+          email: profile.email,
+          fechaNacimiento: profile.fechaNacimiento,
+          estadoCivil: profile.estadoCivil,
+          telefono: profile.telefono,
+        }),
       },
     );
     const data = await this.parseProviderResponse(response);
 
     if (!response.ok) {
       throw new BadGatewayException(
-        `Challenge creation failed with status ${response.status}.`,
+        `Challenge creation failed with status ${response.status}: ${this.describeProviderError(data)}`,
       );
     }
 
@@ -71,6 +87,15 @@ export class ChallengeClient {
     if (!idChallenge) {
       throw new BadGatewayException(
         'Challenge response did not include an id.',
+      );
+    }
+
+    if (!extractChallengeQuestions(data)) {
+      // Surface the raw payload so unrecognized question shapes can be mapped.
+      this.logger.warn(
+        `Challenge questions could not be parsed from the provider response; showing generic placeholders. Raw payload: ${JSON.stringify(
+          data,
+        ).slice(0, 4000)}`,
       );
     }
 
@@ -85,7 +110,7 @@ export class ChallengeClient {
   }
 
   async answerChallenge(payload: ChallengePayload, bearerToken: string) {
-    const response = await fetch(
+    const response = await providerFetch(
       `${this.config.providerChallengeBaseUrl}/validacionChallenge/respuestaValidacionChallenge`,
       {
         method: 'POST',
@@ -107,7 +132,7 @@ export class ChallengeClient {
 
     if (!response.ok) {
       throw new BadGatewayException(
-        `Challenge verification failed with status ${response.status}.`,
+        `Challenge verification failed with status ${response.status}: ${this.describeProviderError(data)}`,
       );
     }
 
@@ -124,6 +149,17 @@ export class ChallengeClient {
       ),
       raw: data,
     };
+  }
+
+  private describeProviderError(data: unknown) {
+    if (typeof data === 'string') {
+      return data.slice(0, 500);
+    }
+    try {
+      return JSON.stringify(data).slice(0, 500);
+    } catch {
+      return 'unparseable provider response';
+    }
   }
 
   private authorizationHeader(token: string) {
