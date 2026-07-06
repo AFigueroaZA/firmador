@@ -1,0 +1,28 @@
+---
+import type { IdentityStatusResponse } from "@firmador/shared";
+import AppLayout from "../../layouts/AppLayout.astro";
+import { SignWizard } from "../../components/islands/SignWizard";
+import { serverFetch } from "../../lib/server/api";
+
+const identityResponse = await serverFetch(Astro.request, "/api/identity/me");
+if (!identityResponse.ok) {
+  return Astro.redirect("/login");
+}
+
+const identity = (await identityResponse.json()) as IdentityStatusResponse;
+if (!identity.canSign) {
+  return Astro.redirect("/identity?next=/sign/new");
+}
+---
+
+<AppLayout title="Nuevo proceso de firma" user={Astro.locals.user}>
+  <section class="space-y-4">
+    <div class="panel animate-rise px-6 py-5">
+      <h2 class="text-lg font-semibold text-ink">Carga y configuracion</h2>
+      <p class="mt-2 text-sm text-slate-600">
+        Selecciona el PDF, define si la firma sera visible y confirma la posicion antes del pago demo.
+      </p>
+    </div>
+    <SignWizard client:load createEndpoint="/api/signing/processes" />
+  </section>
+</AppLayout>

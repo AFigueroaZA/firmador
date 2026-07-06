@@ -1,0 +1,39 @@
+/* empty css                                     */
+import { d as createComponent, j as renderComponent, r as renderTemplate, g as createAstro, m as maybeRenderHead } from '../chunks/astro/server_CPEKY1oh.mjs';
+import { $ as $$AppLayout } from '../chunks/AppLayout_CblbXfT2.mjs';
+export { renderers } from '../renderers.mjs';
+
+const $$Astro = createAstro();
+const $$Index = createComponent(($$result, $$props, $$slots) => {
+  const Astro2 = $$result.createAstro($$Astro, $$props, $$slots);
+  Astro2.self = $$Index;
+  const error = Astro2.url.searchParams.get("error");
+  return renderTemplate`${renderComponent($$result, "AppLayout", $$AppLayout, { "title": "Firmador" }, { "default": ($$result2) => renderTemplate` ${maybeRenderHead()}<section class="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_0.9fr]"> <article class="panel animate-rise px-6 py-7"> <p class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+Firma digital de documentos
+</p> <h2 class="mt-3 text-2xl font-semibold text-ink">
+Ingresa o valida tu identidad para comenzar.
+</h2> <p class="mt-3 text-sm leading-6 text-slate-600">
+Si ya completaste el registro, usa tu correo y contrasena. Si eres nuevo,
+        inicia el registro con ClaveUnica y luego completa tus datos de perfil.
+</p> <div class="mt-6 flex flex-wrap gap-3"> <a class="button-primary" href="/register">Registrarme con ClaveUnica</a> <a class="button-secondary" href="/login">Ya tengo cuenta</a> </div> ${error && renderTemplate`<div class="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+No se pudo completar el registro. Intentalo nuevamente.
+</div>`} </article> <article class="panel animate-rise px-6 py-7"> <h3 class="text-lg font-semibold text-ink">Entrar</h3> <form action="/session/login" class="mt-5 space-y-4" method="post"> <label class="block text-sm text-slate-600">
+Correo
+<input class="field mt-2" name="email" type="email" required> </label> <label class="block text-sm text-slate-600">
+Contrasena
+<input class="field mt-2" name="password" type="password" required> </label> <button class="button-primary w-full" type="submit">Entrar</button> </form> </article> </section> ` })}`;
+}, "C:/Users/afigueroa/Desktop/C\xF3digos/Universidad/firmador/apps/web/src/pages/index.astro", void 0);
+
+const $$file = "C:/Users/afigueroa/Desktop/Códigos/Universidad/firmador/apps/web/src/pages/index.astro";
+const $$url = "";
+
+const _page = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
+  __proto__: null,
+  default: $$Index,
+  file: $$file,
+  url: $$url
+}, Symbol.toStringTag, { value: 'Module' }));
+
+const page = () => _page;
+
+export { page };

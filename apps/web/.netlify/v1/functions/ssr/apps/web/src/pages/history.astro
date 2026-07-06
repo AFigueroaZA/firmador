@@ -1,0 +1,45 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import StatusBadge from "../components/StatusBadge.astro";
+import type { SigningProcessSummary } from "@firmador/shared";
+import { serverFetch } from "../lib/server/api";
+
+const response = await serverFetch(Astro.request, "/api/history");
+const history = response.ok
+  ? ((await response.json()) as { items: SigningProcessSummary[] })
+  : { items: [] };
+---
+
+<AppLayout title="Historial de firmas" user={Astro.locals.user}>
+  <section class="panel animate-rise overflow-hidden">
+    <div class="border-b border-slate-100 px-6 py-5">
+      <h2 class="text-lg font-semibold text-ink">Procesos recientes</h2>
+      <p class="mt-2 text-sm text-slate-500">
+        {Astro.locals.user?.role === "admin"
+          ? "Como admin ves todos los procesos registrados."
+          : "Aquí verás solo tus procesos."}
+      </p>
+    </div>
+
+    <div class="divide-y divide-slate-100">
+      {history.items.length === 0 ? (
+        <div class="px-6 py-8 text-sm text-slate-500">Todavía no hay procesos registrados.</div>
+      ) : (
+        history.items.map((item) => (
+          <article class="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 class="font-semibold text-ink">{item.originalFileName}</h3>
+              <p class="mt-2 text-sm text-slate-500">
+                Creado el {new Date(item.createdAt).toLocaleString("es-CL")} · Expira el {new Date(item.expiresAt).toLocaleString("es-CL")}
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <StatusBadge status={item.status} />
+              <a class="button-secondary" href={`/sign/${item.id}/result`}>Abrir</a>
+            </div>
+          </article>
+        ))
+      )}
+    </div>
+  </section>
+</AppLayout>
