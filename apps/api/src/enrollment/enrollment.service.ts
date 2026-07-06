@@ -130,18 +130,35 @@ export class EnrollmentService {
       );
     }
 
+    const stageTimer = (stage: string) => {
+      const startedAt = Date.now();
+      this.logger.log(`Enrollment stage "${stage}" started`);
+      return () =>
+        this.logger.log(
+          `Enrollment stage "${stage}" finished in ${Date.now() - startedAt}ms`,
+        );
+    };
+
+    let done = stageTimer('challenge');
     const challengeResult = await this.providerService.submitChallenge({
       payload,
       providerContext: context,
     });
+    done();
+
+    done = stageTimer('ra');
     const raResult = await this.providerService.createRaRequest({
       providerContext: challengeResult.providerContext,
     });
+    done();
+
+    done = stageTimer('certificate');
     const certificateResult = await this.providerService.downloadCertificate({
       providerContext: raResult.providerContext,
       signOptions: { visible: false },
       imageBuffer: null,
     });
+    done();
 
     const finalContext = certificateResult.providerContext;
     const now = new Date();

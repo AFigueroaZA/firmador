@@ -125,7 +125,9 @@ const challenge: EnrollmentChallenge | null = enrollment?.challenge ?? null;
 
       if (!response.ok) {
         if (errorBox) {
+          const detail = await providerErrorMessage(response);
           errorBox.textContent =
+            detail ||
             "No se pudo completar la validación. Verifica tus respuestas o vuelve a intentarlo con nuevas preguntas recargando la página.";
           errorBox.classList.remove("hidden");
         }
