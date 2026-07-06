@@ -67,8 +67,23 @@ export class RaClient {
       coerceString(deepFindValue(data, ['nroSolicitud', 'numeroSolicitud'])) ??
       '';
     if (!nroSolicitud) {
+      // Surface the provider's business error (e.g. <descripcion>) instead
+      // of a blind "missing nroSolicitud" so the UI/logs show the cause.
+      const providerMessage = coerceString(
+        deepFindValue(data, [
+          'descripcion',
+          'mensajeRespuesta',
+          'mensaje',
+          'glosa',
+          'detalle',
+          'faultstring',
+          'error',
+        ]),
+      );
       throw new BadGatewayException(
-        'RA response did not include nroSolicitud.',
+        `RA request was not accepted: ${
+          providerMessage ?? `unrecognized response: ${rawText.slice(0, 300)}`
+        }`,
       );
     }
 

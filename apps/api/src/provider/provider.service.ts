@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   ChallengePayload,
   ChallengeQuestion,
@@ -30,6 +30,7 @@ import { coerceString, deepFindValue } from './utils/provider-response.util';
 @Injectable()
 export class ProviderService {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(ProviderService.name);
 
   constructor(
     private readonly claveUnicaClient: ClaveUnicaClient,
@@ -297,6 +298,11 @@ export class ProviderService {
           Boolean(value) && values.indexOf(value) === index,
       )
       .join(',');
+
+    this.logger.log(
+      `RA request: idValidacion has ${idValidation.split(',').length} id(s); ` +
+        `claveIdValidation present: ${Boolean(input.providerContext.claveIdValidation)}`,
+    );
 
     const result = await this.raClient.createRequest({
       profile: normalizeProfileForRa(input.providerContext.externalProfile),
