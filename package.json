@@ -13,5 +13,10 @@
     "lint": "node scripts/with-root-env.mjs pnpm --filter @firmador/api lint && node scripts/with-root-env.mjs pnpm --filter @firmador/web check",
     "format": "node scripts/with-root-env.mjs pnpm --filter @firmador/api format",
     "seed": "node scripts/with-root-env.mjs pnpm --filter @firmador/api seed"
+  },
+  "dependencies": {
+    "@nestjs/microservices": "^11.1.27",
+    "@nestjs/websockets": "^11.1.27",
+    "serverless-http": "^4.0.0"
   }
 }

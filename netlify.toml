@@ -4,7 +4,10 @@
   functions = "netlify/functions"
 
 [functions]
-  node_bundler = "esbuild"
+  # nft (Node File Trace) copia los modulos trazados sin bundlear, lo que
+  # tolera los require() opcionales de NestJS (microservices, websockets, etc.)
+  node_bundler = "nft"
+  included_files = ["apps/api/dist/**"]
 
 [[redirects]]
   from = "/api/*"
