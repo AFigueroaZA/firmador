@@ -9,7 +9,9 @@
  */
 
 export const TELEFONO_PATTERN = /^9\d{8}$/;
-export const NUMERO_DOCUMENTO_PATTERN = /^[A-Z]?\d{6,10}$/;
+// Alfanumerico con al menos un digito: cubre formatos antiguos ("123456789",
+// "A012345678") y los nuevos con letras intercaladas (ej: "B5S270827").
+export const NUMERO_DOCUMENTO_PATTERN = /^(?=.*\d)[A-Z0-9]{6,12}$/;
 export const FECHA_NACIMIENTO_PATTERN =
   /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
