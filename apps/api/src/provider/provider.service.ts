@@ -71,6 +71,65 @@ export class ProviderService {
     };
   }
 
+  /**
+   * Generic ClaveUnica authorization, reusable outside the signing flow
+   * (e.g. enrollment re-validation). The caller owns the callback route.
+   */
+  async createClaveUnicaAuthorization(input: {
+    successRedirect: string;
+    failedRedirect: string;
+    mockCode: string;
+  }): Promise<{ redirectUrl: string; claveCode: string }> {
+    if (this.config.signingProviderMode === 'mock') {
+      const separator = input.successRedirect.includes('?') ? '&' : '?';
+      return {
+        redirectUrl: `${input.successRedirect}${separator}code=${encodeURIComponent(
+          input.mockCode,
+        )}`,
+        claveCode: input.mockCode,
+      };
+    }
+
+    const result = await this.claveUnicaClient.requestAuthorizationCode({
+      successRedirect: input.successRedirect,
+      failedRedirect: input.failedRedirect,
+    });
+    return { redirectUrl: result.redirectUrl, claveCode: result.code };
+  }
+
+  /**
+   * Exchanges a ClaveUnica callback code for a fresh idValidacion. Used to
+   * renew the short-lived ClaveUnica validation the RA requires for FEA.
+   */
+  async refreshClaveValidation(input: {
+    callbackCode: string;
+  }): Promise<{ claveIdValidation: string }> {
+    if (this.config.signingProviderMode === 'mock') {
+      return { claveIdValidation: `mock-clave-validation-${randomUUID()}` };
+    }
+
+    const tokenResult = await this.claveUnicaClient.exchangeToken(
+      input.callbackCode,
+    );
+    const userInfo = await this.claveUnicaClient.getUserInfo({
+      accessToken: tokenResult.accessToken,
+      code: input.callbackCode,
+    });
+    const claveIdValidation = coerceString(
+      deepFindValue(userInfo.raw, [
+        'idValidacion',
+        'idValidation',
+        'validationId',
+      ]),
+    );
+    if (!claveIdValidation) {
+      throw new Error(
+        'ClaveUnica user info did not include an idValidacion for the enrollment.',
+      );
+    }
+    return { claveIdValidation };
+  }
+
   async completeAuthorization(input: {
     callbackCode?: string;
     providerContext?: ProviderContext | null;
