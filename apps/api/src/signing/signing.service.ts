@@ -10,9 +10,11 @@ import type {
   ChallengePayload,
   CreateSigningProcessResponse,
   PaymentEligibilityResponse,
+  SignOptions,
   SigningProcessDetail,
   SigningProcessSummary,
 } from '@firmador/shared';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Express } from 'express';
@@ -470,18 +472,13 @@ export class SigningService {
         },
       });
 
-      const imageBuffer = process.signatureImageStoragePath
-        ? await this.fileStore.read(process.signatureImageStoragePath)
-        : null;
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
@@ -688,15 +685,13 @@ export class SigningService {
         });
       }
 
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext: certificateResult.providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
@@ -724,6 +719,80 @@ export class SigningService {
     }
 
     return this.getProcessDetail(requestUser, process.id);
+  }
+
+  /**
+   * Prepares the PDF for the provider signature:
+   * - The user's drawn signature image (if any) is stamped into the page
+   *   content at the position picked in the wizard, so it travels with the
+   *   document and gets covered by the cryptographic signature.
+   * - A signature page is appended at the end, and the provider's mandatory
+   *   dynamic stamp (ImagenDinamica) is pointed at a strip there, so it
+   *   never overlaps the original content.
+   */
+  private async prepareDocumentForSigning(
+    process: SigningProcessEntity,
+  ): Promise<{ pdfBuffer: Buffer; signOptions: SignOptions }> {
+    const originalPdf = await this.fileStore.read(process.originalStoragePath);
+    const imageBuffer = process.signatureImageStoragePath
+      ? await this.fileStore.read(process.signatureImageStoragePath)
+      : null;
+
+    const pdfDocument = await PDFDocument.load(originalPdf, {
+      ignoreEncryption: true,
+    });
+
+    const options = process.signOptions;
+    if (
+      imageBuffer &&
+      options.visible &&
+      options.page !== undefined &&
+      options.page >= 1 &&
+      options.page <= pdfDocument.getPageCount() &&
+      options.x !== undefined &&
+      options.y !== undefined &&
+      options.width !== undefined &&
+      options.height !== undefined
+    ) {
+      const isPng = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50;
+      const image = isPng
+        ? await pdfDocument.embedPng(imageBuffer)
+        : await pdfDocument.embedJpg(imageBuffer);
+      pdfDocument.getPage(options.page - 1).drawImage(image, {
+        x: options.x,
+        y: options.y,
+        width: options.width,
+        height: options.height,
+      });
+    }
+
+    const lastPage = pdfDocument.getPage(pdfDocument.getPageCount() - 1);
+    const { width: pageWidth, height: pageHeight } = lastPage.getSize();
+    const signaturePage = pdfDocument.addPage([pageWidth, pageHeight]);
+
+    const margin = 40;
+    const stripHeight = 120;
+    const stripY = pageHeight - margin - stripHeight;
+    const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
+    signaturePage.drawText('Firma Electrónica Avanzada', {
+      x: margin,
+      y: stripY + stripHeight + 10,
+      size: 10,
+      font,
+      color: rgb(0.42, 0.45, 0.5),
+    });
+
+    return {
+      pdfBuffer: Buffer.from(await pdfDocument.save()),
+      signOptions: {
+        visible: true,
+        page: pdfDocument.getPageCount(),
+        x: margin,
+        y: stripY,
+        width: pageWidth - margin * 2,
+        height: stripHeight,
+      },
+    };
   }
 
   async downloadSignedDocument(requestUser: RequestUser, processId: string) {
@@ -840,18 +909,13 @@ export class SigningService {
         },
       });
 
-      const imageBuffer = process.signatureImageStoragePath
-        ? await this.fileStore.read(process.signatureImageStoragePath)
-        : null;
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
