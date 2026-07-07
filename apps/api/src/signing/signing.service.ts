@@ -4,6 +4,7 @@ import {
   forwardRef,
   GoneException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
@@ -58,6 +59,7 @@ import { mapProcessToDetail, mapProcessToSummary } from './signing.mapper';
 @Injectable()
 export class SigningService {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(SigningService.name);
 
   constructor(
     @InjectRepository(SigningProcessEntity)
@@ -726,9 +728,9 @@ export class SigningService {
    * - The user's drawn signature image (if any) is stamped into the page
    *   content at the position picked in the wizard, so it travels with the
    *   document and gets covered by the cryptographic signature.
-   * - A signature page is appended at the end, and the provider's mandatory
-   *   dynamic stamp (ImagenDinamica) is pointed at a strip there, so it
-   *   never overlaps the original content.
+   * - The first page is expanded at the bottom, and the provider's
+   *   mandatory dynamic stamp (ImagenDinamica) is pointed at that new
+   *   strip, so it never overlaps the original content.
    */
   private async prepareDocumentForSigning(
     process: SigningProcessEntity,
@@ -743,41 +745,56 @@ export class SigningService {
     });
 
     const options = process.signOptions;
-    if (
+    const canStampImage = Boolean(
       imageBuffer &&
-      options.visible &&
-      options.page !== undefined &&
-      options.page >= 1 &&
-      options.page <= pdfDocument.getPageCount() &&
-      options.x !== undefined &&
-      options.y !== undefined &&
-      options.width !== undefined &&
-      options.height !== undefined
-    ) {
+        options.visible &&
+        options.page !== undefined &&
+        options.page >= 1 &&
+        options.page <= pdfDocument.getPageCount() &&
+        options.x !== undefined &&
+        options.y !== undefined &&
+        options.width !== undefined &&
+        options.height !== undefined,
+    );
+    this.logger.log(
+      `Preparing document for signing: image=${Boolean(imageBuffer)}, ` +
+        `visible=${options.visible}, page=${options.page}, stamped=${canStampImage}`,
+    );
+    if (imageBuffer && canStampImage) {
       const isPng = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50;
       const image = isPng
         ? await pdfDocument.embedPng(imageBuffer)
         : await pdfDocument.embedJpg(imageBuffer);
-      pdfDocument.getPage(options.page - 1).drawImage(image, {
-        x: options.x,
-        y: options.y,
-        width: options.width,
-        height: options.height,
+      pdfDocument.getPage((options.page as number) - 1).drawImage(image, {
+        x: options.x as number,
+        y: options.y as number,
+        width: options.width as number,
+        height: options.height as number,
       });
     }
 
-    const lastPage = pdfDocument.getPage(pdfDocument.getPageCount() - 1);
-    const { width: pageWidth, height: pageHeight } = lastPage.getSize();
-    const signaturePage = pdfDocument.addPage([pageWidth, pageHeight]);
+    // Expand the first page downwards and reserve the new space for the
+    // provider strip. The original content (including the stamped image)
+    // is re-drawn shifted up, so nothing overlaps.
+    const margin = 24;
+    const stripHeight = 110;
+    const extraSpace = stripHeight + margin * 2;
 
-    const margin = 40;
-    const stripHeight = 120;
-    const stripY = pageHeight - margin - stripHeight;
+    const firstPage = pdfDocument.getPage(0);
+    const { width: pageWidth, height: pageHeight } = firstPage.getSize();
+    const embeddedFirstPage = await pdfDocument.embedPage(firstPage);
+    const expandedPage = pdfDocument.insertPage(0, [
+      pageWidth,
+      pageHeight + extraSpace,
+    ]);
+    expandedPage.drawPage(embeddedFirstPage, { x: 0, y: extraSpace });
+    pdfDocument.removePage(1);
+
     const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
-    signaturePage.drawText('Firma Electrónica Avanzada', {
+    expandedPage.drawText('Firma Electrónica Avanzada', {
       x: margin,
-      y: stripY + stripHeight + 10,
-      size: 10,
+      y: margin + stripHeight + 8,
+      size: 9,
       font,
       color: rgb(0.42, 0.45, 0.5),
     });
@@ -786,9 +803,9 @@ export class SigningService {
       pdfBuffer: Buffer.from(await pdfDocument.save()),
       signOptions: {
         visible: true,
-        page: pdfDocument.getPageCount(),
+        page: 1,
         x: margin,
-        y: stripY,
+        y: margin,
         width: pageWidth - margin * 2,
         height: stripHeight,
       },
