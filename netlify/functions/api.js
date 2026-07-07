@@ -9,7 +9,11 @@ const getHandler = async () => {
   if (!cachedHandler) {
     const app = await createApp();
     await app.init();
-    cachedHandler = serverless(app.getHttpAdapter().getInstance());
+    cachedHandler = serverless(app.getHttpAdapter().getInstance(), {
+      // Sin esto serverless-http serializa las respuestas como UTF-8 y
+      // corrompe los binarios (PDFs firmados descargados planos/invalidos).
+      binary: ["application/pdf", "application/octet-stream", "image/*"],
+    });
   }
   return cachedHandler;
 };
