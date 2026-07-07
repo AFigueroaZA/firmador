@@ -257,14 +257,6 @@ export class EnrollmentService {
       );
     }
 
-    // The RA rejects FEA requests with a stale ClaveUnica validation, so
-    // fail fast with an actionable message instead of burning the attempt.
-    if (!this.claveValidationInfo(context).fresh) {
-      throw new BadRequestException(
-        'Tu validación de ClaveÚnica no está vigente. Usa el botón "Validar con ClaveÚnica" y vuelve a enviar tus respuestas.',
-      );
-    }
-
     const stageTimer = (stage: string) => {
       const startedAt = Date.now();
       this.logger.log(`Enrollment stage "${stage}" started`);

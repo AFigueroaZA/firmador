@@ -30,7 +30,10 @@ export interface ProviderContext extends Record<string, unknown> {
   claveIdValidation?: string;
   challengeToken?: string;
   idChallenge?: string;
+  /** Validation id returned by ingresoValidacionChallenge (challenge creation). */
   idValidation?: string;
+  /** Validation id returned by respuestaValidacionChallenge (answers accepted). */
+  answerIdValidation?: string;
   nroSolicitud?: string;
   downloadPin?: string;
   pinFirma?: string;

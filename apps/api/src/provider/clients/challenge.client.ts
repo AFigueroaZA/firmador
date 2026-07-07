@@ -99,11 +99,21 @@ export class ChallengeClient {
       );
     }
 
+    const idValidation = coerceString(
+      deepFindValue(data, ['idValidacion', 'idValidation', 'validationId']),
+    );
+    if (!idValidation) {
+      // The RA needs this id comma-joined with the answer validation id.
+      this.logger.warn(
+        `ingresoValidacionChallenge returned no idValidacion; top-level keys: ${JSON.stringify(
+          data && typeof data === 'object' ? Object.keys(data) : typeof data,
+        )}`,
+      );
+    }
+
     return {
       idChallenge,
-      idValidation: coerceString(
-        deepFindValue(data, ['idValidacion', 'idValidation', 'validationId']),
-      ),
+      idValidation,
       questions: normalizeChallengeQuestions(data),
       raw: data,
     };

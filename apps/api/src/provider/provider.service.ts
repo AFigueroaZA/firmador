@@ -327,6 +327,7 @@ export class ProviderService {
           idValidation:
             input.providerContext.idValidation ??
             `mock-validation-${randomUUID()}`,
+          answerIdValidation: `mock-answer-validation-${randomUUID()}`,
         },
         auditMeta: { provider: 'mock', stage: 'challenge' },
       };
@@ -342,10 +343,12 @@ export class ProviderService {
       challengeToken,
     );
 
+    // Keep the creation validation id (idValidation) intact: the RA expects
+    // both the ingreso and respuesta validation ids, comma-separated.
     return {
       providerContext: {
         ...input.providerContext,
-        idValidation: result.idValidation ?? input.providerContext.idValidation,
+        answerIdValidation: result.idValidation ?? undefined,
       },
       auditMeta: { provider: 'live', stage: 'challenge', raw: result.raw },
     };
@@ -367,16 +370,22 @@ export class ProviderService {
 
     if (
       !input.providerContext.externalProfile ||
-      !input.providerContext.idValidation
+      !(
+        input.providerContext.idValidation ||
+        input.providerContext.answerIdValidation
+      )
     ) {
       throw new Error('Provider context is incomplete for RA request.');
     }
 
-    // The provider expects the ClaveUnica and challenge validation ids
-    // together, comma-separated (see WSIngresoSolicitud sample payload).
+    // The RA expects the validation ids comma-separated (see the Postman
+    // sample: <idValidacion>8Gpyg7pFUG5jD,1R3h4htrtmT</idValidacion>).
+    // ClaveUnica's users/info returns no validation id, so in practice the
+    // pair is [ingresoValidacionChallenge, respuestaValidacionChallenge].
     const idValidation = [
       input.providerContext.claveIdValidation,
       input.providerContext.idValidation,
+      input.providerContext.answerIdValidation,
     ]
       .filter(
         (value, index, values): value is string =>
@@ -385,8 +394,10 @@ export class ProviderService {
       .join(',');
 
     this.logger.log(
-      `RA request: idValidacion has ${idValidation.split(',').length} id(s); ` +
-        `claveIdValidation present: ${Boolean(input.providerContext.claveIdValidation)}`,
+      `RA request: idValidacion has ${idValidation.split(',').length} id(s) ` +
+        `(clave: ${Boolean(input.providerContext.claveIdValidation)}, ` +
+        `ingreso: ${Boolean(input.providerContext.idValidation)}, ` +
+        `respuesta: ${Boolean(input.providerContext.answerIdValidation)})`,
     );
 
     const result = await this.raClient.createRequest({
