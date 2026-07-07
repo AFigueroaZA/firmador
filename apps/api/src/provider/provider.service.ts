@@ -115,13 +115,14 @@ export class ProviderService {
       accessToken: tokenResult.accessToken,
       code: input.callbackCode,
     });
-    const claveIdValidation = coerceString(
-      deepFindValue(userInfo.raw, [
-        'idValidacion',
-        'idValidation',
-        'validationId',
-      ]),
-    );
+    const claveIdValidation =
+      coerceString(
+        deepFindValue(userInfo.raw, [
+          'idValidacion',
+          'idValidation',
+          'validationId',
+        ]),
+      ) ?? tokenResult.idValidation;
     if (!claveIdValidation) {
       // Log the response shape (keys only, no PII) so we can map the field.
       const shape =
@@ -208,13 +209,14 @@ export class ProviderService {
       accessToken: tokenResult.accessToken,
       code: callbackCode,
     });
-    const claveIdValidation = coerceString(
-      deepFindValue(userInfo.raw, [
-        'idValidacion',
-        'idValidation',
-        'validationId',
-      ]),
-    );
+    const claveIdValidation =
+      coerceString(
+        deepFindValue(userInfo.raw, [
+          'idValidacion',
+          'idValidation',
+          'validationId',
+        ]),
+      ) ?? tokenResult.idValidation;
     const externalProfile = this.mergeExternalProfileOverrides(
       userInfo.profile,
       input.providerContext?.externalProfileOverrides,

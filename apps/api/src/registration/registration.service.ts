@@ -220,13 +220,15 @@ export class RegistrationService {
     });
     // Keep the provider validation id from this ClaveUnica session: the RA
     // enrollment expects it comma-joined with the challenge validation id.
-    const claveIdValidation = coerceString(
-      deepFindValue(userInfo.raw, [
-        'idValidacion',
-        'idValidation',
-        'validationId',
-      ]),
-    );
+    // users/info carries no id, so fall back to the token exchange payload.
+    const claveIdValidation =
+      coerceString(
+        deepFindValue(userInfo.raw, [
+          'idValidacion',
+          'idValidation',
+          'validationId',
+        ]),
+      ) ?? tokenResult.idValidation;
     return { ...userInfo.profile, claveIdValidation };
   }
 

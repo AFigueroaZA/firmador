@@ -4,6 +4,7 @@ import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
+  describePayloadShape,
   normalizeExternalProfile,
 } from '../utils/provider-response.util';
 
@@ -117,7 +118,20 @@ export class ClaveUnicaClient {
       );
     }
 
-    return { accessToken, raw: data };
+    // The token exchange is the most likely carrier of the ClaveUnica-side
+    // validation id the RA needs (users/info proved to not include one).
+    const idValidation = coerceString(
+      deepFindValue(data, ['idValidacion', 'idValidation', 'validationId']),
+    );
+    if (!idValidation) {
+      this.logger.warn(
+        `ClaveUnica token exchange returned no idValidacion. Response shape: ${JSON.stringify(
+          describePayloadShape(data),
+        )}`,
+      );
+    }
+
+    return { accessToken, idValidation, raw: data };
   }
 
   async getUserInfo(input: { accessToken: string; code: string }) {
