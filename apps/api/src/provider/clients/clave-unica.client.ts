@@ -118,10 +118,16 @@ export class ClaveUnicaClient {
       );
     }
 
-    // The token exchange is the most likely carrier of the ClaveUnica-side
-    // validation id the RA needs (users/info proved to not include one).
+    // The ClaveUnica-side validation id the RA needs lives here, under
+    // "identifier" (verified against production: users/info has no id and
+    // the challenge yields a single one). Sample: "DivyNct9LkCR1f4gyCxXFzXy".
     const idValidation = coerceString(
-      deepFindValue(data, ['idValidacion', 'idValidation', 'validationId']),
+      deepFindValue(data, [
+        'idValidacion',
+        'idValidation',
+        'validationId',
+        'identifier',
+      ]),
     );
     if (!idValidation) {
       this.logger.warn(
