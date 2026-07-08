@@ -15,7 +15,12 @@ import type {
   SigningProcessDetail,
   SigningProcessSummary,
 } from '@firmador/shared';
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import {
+  PDFDocument,
+  type PDFEmbeddedPage,
+  rgb,
+  StandardFonts,
+} from 'pdf-lib';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Express } from 'express';
@@ -784,22 +789,31 @@ export class SigningService {
       });
     }
 
-    // Expand the first page downwards and reserve the new space for the
-    // provider strip. The original content (including the stamped image)
-    // is re-drawn shifted up, so nothing overlaps.
+    // Expand the last page downwards and reserve the new space for the
+    // provider strip — signatures conventionally close the document. The
+    // original content (including the stamped image) is re-drawn shifted
+    // up, so nothing overlaps.
     const margin = 24;
     const stripHeight = 110;
     const extraSpace = stripHeight + margin * 2;
 
-    const firstPage = pdfDocument.getPage(0);
-    const { width: pageWidth, height: pageHeight } = firstPage.getSize();
-    const embeddedFirstPage = await pdfDocument.embedPage(firstPage);
-    const expandedPage = pdfDocument.insertPage(0, [
+    const lastIndex = pdfDocument.getPageCount() - 1;
+    const lastPage = pdfDocument.getPage(lastIndex);
+    const { width: pageWidth, height: pageHeight } = lastPage.getSize();
+    // Blank pages have no content stream and cannot be embedded (the
+    // failure surfaces lazily at save()); the expanded replacement simply
+    // stays blank above the strip in that case.
+    const embeddedLastPage: PDFEmbeddedPage | null = lastPage.node.Contents()
+      ? await pdfDocument.embedPage(lastPage)
+      : null;
+    const expandedPage = pdfDocument.insertPage(lastIndex, [
       pageWidth,
       pageHeight + extraSpace,
     ]);
-    expandedPage.drawPage(embeddedFirstPage, { x: 0, y: extraSpace });
-    pdfDocument.removePage(1);
+    if (embeddedLastPage) {
+      expandedPage.drawPage(embeddedLastPage, { x: 0, y: extraSpace });
+    }
+    pdfDocument.removePage(lastIndex + 1);
 
     const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
     expandedPage.drawText('Firma Electrónica Avanzada', {
@@ -814,7 +828,7 @@ export class SigningService {
       pdfBuffer: Buffer.from(await pdfDocument.save()),
       signOptions: {
         visible: true,
-        page: 1,
+        page: lastIndex + 1,
         x: margin,
         y: margin,
         width: pageWidth - margin * 2,
