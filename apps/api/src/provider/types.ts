@@ -22,6 +22,8 @@ export interface ExternalProfileOverrides extends Record<string, unknown> {
   fechaNacimiento?: string;
   estadoCivil?: string;
   telefono?: string;
+  /** ClaveUnica users/info carries no email; it must come from the account. */
+  email?: string;
 }
 
 export interface ProviderContext extends Record<string, unknown> {

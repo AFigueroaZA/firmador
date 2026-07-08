@@ -585,6 +585,7 @@ export class ProviderService {
       fechaNacimiento: overrides.fechaNacimiento ?? profile.fechaNacimiento,
       estadoCivil: overrides.estadoCivil ?? profile.estadoCivil,
       telefono: overrides.telefono ?? profile.telefono,
+      email: overrides.email ?? profile.email,
     };
   }
 

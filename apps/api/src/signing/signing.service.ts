@@ -359,6 +359,9 @@ export class SigningService {
     if (identity.profile?.telefono) {
       identityOverrides.telefono = identity.profile.telefono;
     }
+    // ClaveUnica users/info carries no email; without this override the
+    // challenge profile validation fails with "Missing fields: email".
+    identityOverrides.email = identity.profile?.email ?? requestUser.email;
 
     process.externalAuthState = state;
     process.providerContextEncrypted = this.sealedPayloadService.sealJson({
@@ -401,6 +404,14 @@ export class SigningService {
       eligible && this.config.signingProviderMode === 'live'
         ? await this.findActiveLiveRegistration(requestUser.id)
         : null;
+
+    if (this.config.signingProviderMode === 'live') {
+      this.logger.log(
+        `Payment eligibility for process ${process.id}: eligible=${eligible} ` +
+          `(canSign=${identity.canSign}, status=${process.status}), ` +
+          `activeRegistration=${Boolean(activeRegistration)}`,
+      );
+    }
 
     return {
       mode: this.config.signingProviderMode,
