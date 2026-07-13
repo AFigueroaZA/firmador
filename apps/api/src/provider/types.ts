@@ -22,6 +22,8 @@ export interface ExternalProfileOverrides extends Record<string, unknown> {
   fechaNacimiento?: string;
   estadoCivil?: string;
   telefono?: string;
+  /** ClaveUnica users/info carries no email; it must come from the account. */
+  email?: string;
 }
 
 export interface ProviderContext extends Record<string, unknown> {
@@ -30,7 +32,10 @@ export interface ProviderContext extends Record<string, unknown> {
   claveIdValidation?: string;
   challengeToken?: string;
   idChallenge?: string;
+  /** Validation id returned by ingresoValidacionChallenge (challenge creation). */
   idValidation?: string;
+  /** Validation id returned by respuestaValidacionChallenge (answers accepted). */
+  answerIdValidation?: string;
   nroSolicitud?: string;
   downloadPin?: string;
   pinFirma?: string;

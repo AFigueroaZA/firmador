@@ -4,12 +4,14 @@ import {
   forwardRef,
   GoneException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type {
   ChallengePayload,
   CreateSigningProcessResponse,
   PaymentEligibilityResponse,
+  SignOptions,
   SigningProcessDetail,
   SigningProcessSummary,
 } from '@firmador/shared';
@@ -52,10 +54,12 @@ import {
 } from './sign-options';
 import { SigningProcessEntity } from './entities/signing-process.entity';
 import { mapProcessToDetail, mapProcessToSummary } from './signing.mapper';
+import { preparePdfForSigning } from './pdf-signing-preparation';
 
 @Injectable()
 export class SigningService {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(SigningService.name);
 
   constructor(
     @InjectRepository(SigningProcessEntity)
@@ -145,16 +149,7 @@ export class SigningService {
       provider: 'FIRMA_CL',
       providerProcessId: null,
       requestedAt: new Date(),
-      signOptions,
-      pdfMetadata: metadata.pdfMetadata,
-      originalStoragePath,
       signedStoragePath: null,
-      signatureImageStoragePath,
-      externalAuthState: null,
-      externalIdentity: null,
-      externalProfileOverrides,
-      providerContextEncrypted: null,
-      challenge: null,
       errorMessage: null,
       expiresAt: new Date(
         Date.now() + this.config.tempFileTtlHours * 60 * 60 * 1000,
@@ -162,6 +157,17 @@ export class SigningService {
       signedAt: null,
     });
 
+    // TypeORM's Repository.create() copies mapped columns and relations, but
+    // does not invoke these virtual setters backed by the metadata JSONB.
+    process.signOptions = signOptions;
+    process.pdfMetadata = metadata.pdfMetadata;
+    process.originalStoragePath = originalStoragePath;
+    process.signatureImageStoragePath = signatureImageStoragePath;
+    process.externalAuthState = null;
+    process.externalIdentity = null;
+    process.externalProfileOverrides = externalProfileOverrides;
+    process.providerContextEncrypted = null;
+    process.challenge = null;
     process.status = hasInitialSignOptions ? 'CONFIGURED' : 'UPLOADED';
     await this.saveProcess(process);
     if (hasInitialSignOptions && signOptions.visible) {
@@ -292,17 +298,15 @@ export class SigningService {
     if (this.config.signingProviderMode === 'live') {
       const active = await this.findActiveLiveRegistration(requestUser.id);
       if (active) {
-        const signed = await this.signWithExistingRegistration(
+        await this.signWithExistingRegistration(
           requestUser,
           process,
           active.registration,
           active.context,
         );
-        if (signed) {
-          return {
-            url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
-          };
-        }
+        return {
+          url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
+        };
       }
 
       if (!options?.skipEnrollmentRedirect) {
@@ -355,6 +359,9 @@ export class SigningService {
     if (identity.profile?.telefono) {
       identityOverrides.telefono = identity.profile.telefono;
     }
+    // ClaveUnica users/info carries no email; without this override the
+    // challenge profile validation fails with "Missing fields: email".
+    identityOverrides.email = identity.profile?.email ?? requestUser.email;
 
     process.externalAuthState = state;
     process.providerContextEncrypted = this.sealedPayloadService.sealJson({
@@ -397,6 +404,14 @@ export class SigningService {
       eligible && this.config.signingProviderMode === 'live'
         ? await this.findActiveLiveRegistration(requestUser.id)
         : null;
+
+    if (this.config.signingProviderMode === 'live') {
+      this.logger.log(
+        `Payment eligibility for process ${process.id}: eligible=${eligible} ` +
+          `(canSign=${identity.canSign}, status=${process.status}), ` +
+          `activeRegistration=${Boolean(activeRegistration)}`,
+      );
+    }
 
     return {
       mode: this.config.signingProviderMode,
@@ -470,18 +485,13 @@ export class SigningService {
         },
       });
 
-      const imageBuffer = process.signatureImageStoragePath
-        ? await this.fileStore.read(process.signatureImageStoragePath)
-        : null;
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
@@ -688,15 +698,13 @@ export class SigningService {
         });
       }
 
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext: certificateResult.providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
@@ -724,6 +732,44 @@ export class SigningService {
     }
 
     return this.getProcessDetail(requestUser, process.id);
+  }
+
+  /**
+   * Prepares the PDF for the provider signature:
+   * - The user's drawn signature image (if any) is stamped into the page
+   *   content at the position picked in the wizard, so it travels with the
+   *   document and gets covered by the cryptographic signature.
+   * - A dedicated final page receives the provider's mandatory dynamic
+   *   stamp (ImagenDinamica), preserving every original page and annotation.
+   */
+  private async prepareDocumentForSigning(
+    process: SigningProcessEntity,
+  ): Promise<{ pdfBuffer: Buffer; signOptions: SignOptions }> {
+    const originalPdf = await this.fileStore.read(process.originalStoragePath);
+    const imageBuffer = process.signatureImageStoragePath
+      ? await this.fileStore.read(process.signatureImageStoragePath)
+      : null;
+
+    const options = process.signOptions;
+    const canStampImage = Boolean(
+      imageBuffer &&
+      options.visible &&
+      options.page !== undefined &&
+      options.page >= 1 &&
+      options.x !== undefined &&
+      options.y !== undefined &&
+      options.width !== undefined &&
+      options.height !== undefined,
+    );
+    this.logger.log(
+      `Preparing document for signing: image=${Boolean(imageBuffer)}, ` +
+        `visible=${options.visible}, page=${options.page}, stamped=${canStampImage}`,
+    );
+    return preparePdfForSigning({
+      originalPdf,
+      imageBuffer,
+      signOptions: options,
+    });
   }
 
   async downloadSignedDocument(requestUser: RequestUser, processId: string) {
@@ -840,18 +886,13 @@ export class SigningService {
         },
       });
 
-      const imageBuffer = process.signatureImageStoragePath
-        ? await this.fileStore.read(process.signatureImageStoragePath)
-        : null;
-      const originalPdf = await this.fileStore.read(
-        process.originalStoragePath,
-      );
+      const prepared = await this.prepareDocumentForSigning(process);
       const signResult = await this.providerService.signDocument({
         providerContext,
         fileName: process.originalFileName,
-        pdfBuffer: originalPdf,
-        signOptions: process.signOptions,
-        imageBuffer,
+        pdfBuffer: prepared.pdfBuffer,
+        signOptions: prepared.signOptions,
+        imageBuffer: null,
       });
 
       process.signedStoragePath = await this.fileStore.save(
@@ -879,22 +920,10 @@ export class SigningService {
           signatureRegistrationId: registration.id,
         },
       });
-      return true;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unexpected signing failure.';
-      process.status = fromStatus;
-      await this.saveProcess(process);
-      await this.auditService.record({
-        processId: process.id,
-        actor: 'system',
-        type: 'REGISTRATION_SIGN_FAILED',
-        message: `Direct signing with stored enrollment failed (${message}); falling back to full provider authorization.`,
-        fromStatus: 'SIGNING',
-        toStatus: process.status,
-        meta: { signatureRegistrationId: registration.id },
-      });
-      return false;
+      await this.failProcess(process, message, 'system');
     }
   }
 

@@ -19,6 +19,10 @@ if (enrollment?.status === "ACTIVE") {
 // The stored challenge (if any) is reused. A new challenge is only requested
 // on explicit user action: the provider limits challenge attempts per RUT.
 const challenge: EnrollmentChallenge | null = enrollment?.challenge ?? null;
+
+// The RA needs a recent ClaveUnica validation id alongside the challenge id.
+const claveFresh = enrollment?.claveValidation?.fresh ?? false;
+const claveParam = Astro.url.searchParams.get("clave");
 ---
 
 <AppLayout title="Habilitar firma electrónica" user={Astro.locals.user}>
@@ -31,6 +35,33 @@ const challenge: EnrollmentChallenge | null = enrollment?.challenge ?? null;
         directamente, sin repetir la validación con Clave Única.
       </p>
     </article>
+
+    {claveParam === "ok" && (
+      <article class="panel animate-rise border border-emerald-200 bg-emerald-50 px-6 py-4">
+        <p class="text-sm text-emerald-800">
+          Validación con ClaveÚnica actualizada. Ya puedes responder y enviar tus respuestas.
+        </p>
+      </article>
+    )}
+    {claveParam === "error" && (
+      <article class="panel animate-rise border border-rose-200 bg-rose-50 px-6 py-4">
+        <p class="text-sm text-rose-700">
+          No se pudo completar la validación con ClaveÚnica. Inténtalo nuevamente.
+        </p>
+      </article>
+    )}
+    {challenge && !claveFresh && (
+      <article class="panel animate-rise border border-amber-200 bg-amber-50 px-6 py-5">
+        <p class="text-sm text-amber-800">
+          El proveedor exige una validación de ClaveÚnica reciente para emitir el certificado.
+          Antes de enviar tus respuestas, valídate aquí:
+        </p>
+        <div class="hidden mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="clave-unica-error"></div>
+        <button class="button-primary mt-4" id="clave-unica-button" type="button">
+          Validar con ClaveÚnica
+        </button>
+      </article>
+    )}
 
     {challenge ? (
       <form class="panel animate-rise space-y-5 px-6 py-6" id="enrollment-challenge-form">
@@ -107,6 +138,28 @@ const challenge: EnrollmentChallenge | null = enrollment?.challenge ?? null;
     startButton?.addEventListener("click", () => startChallenge(startButton, startErrorBox));
     regenerateButton?.addEventListener("click", () => startChallenge(regenerateButton, errorBox));
 
+    const claveButton = document.querySelector("#clave-unica-button");
+    const claveErrorBox = document.querySelector("#clave-unica-error");
+    claveButton?.addEventListener("click", async () => {
+      claveButton.setAttribute("disabled", "true");
+      claveErrorBox?.classList.add("hidden");
+      const response = await fetch("/api/enrollment/clave-unica/start", { method: "POST" });
+      if (response.ok) {
+        const body = await response.json();
+        if (body?.url) {
+          window.location.assign(body.url);
+          return;
+        }
+      }
+      claveButton.removeAttribute("disabled");
+      if (claveErrorBox) {
+        const detail = await providerErrorMessage(response);
+        claveErrorBox.textContent =
+          detail || "No se pudo iniciar la validación con ClaveÚnica. Intenta de nuevo.";
+        claveErrorBox.classList.remove("hidden");
+      }
+    });
+
     form?.addEventListener("submit", async (event) => {
       event.preventDefault();
       errorBox?.classList.add("hidden");
@@ -125,7 +178,9 @@ const challenge: EnrollmentChallenge | null = enrollment?.challenge ?? null;
 
       if (!response.ok) {
         if (errorBox) {
+          const detail = await providerErrorMessage(response);
           errorBox.textContent =
+            detail ||
             "No se pudo completar la validación. Verifica tus respuestas o vuelve a intentarlo con nuevas preguntas recargando la página.";
           errorBox.classList.remove("hidden");
         }

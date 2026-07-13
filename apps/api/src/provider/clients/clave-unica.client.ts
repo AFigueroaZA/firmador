@@ -4,6 +4,7 @@ import { providerFetch } from '../utils/provider-http';
 import {
   coerceString,
   deepFindValue,
+  describePayloadShape,
   normalizeExternalProfile,
 } from '../utils/provider-response.util';
 
@@ -117,7 +118,26 @@ export class ClaveUnicaClient {
       );
     }
 
-    return { accessToken, raw: data };
+    // The ClaveUnica-side validation id the RA needs lives here, under
+    // "identifier" (verified against production: users/info has no id and
+    // the challenge yields a single one). Sample: "DivyNct9LkCR1f4gyCxXFzXy".
+    const idValidation = coerceString(
+      deepFindValue(data, [
+        'idValidacion',
+        'idValidation',
+        'validationId',
+        'identifier',
+      ]),
+    );
+    if (!idValidation) {
+      this.logger.warn(
+        `ClaveUnica token exchange returned no idValidacion. Response shape: ${JSON.stringify(
+          describePayloadShape(data),
+        )}`,
+      );
+    }
+
+    return { accessToken, idValidation, raw: data };
   }
 
   async getUserInfo(input: { accessToken: string; code: string }) {

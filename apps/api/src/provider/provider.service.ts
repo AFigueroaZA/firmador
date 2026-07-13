@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type {
   ChallengePayload,
   ChallengeQuestion,
@@ -30,6 +30,7 @@ import { coerceString, deepFindValue } from './utils/provider-response.util';
 @Injectable()
 export class ProviderService {
   private readonly config = loadAppConfig();
+  private readonly logger = new Logger(ProviderService.name);
 
   constructor(
     private readonly claveUnicaClient: ClaveUnicaClient,
@@ -68,6 +69,92 @@ export class ProviderService {
       providerContext: { claveCode: result.code },
       auditMeta: { provider: 'live', stage: 'authorization', raw: result.raw },
     };
+  }
+
+  /**
+   * Generic ClaveUnica authorization, reusable outside the signing flow
+   * (e.g. enrollment re-validation). The caller owns the callback route.
+   */
+  async createClaveUnicaAuthorization(input: {
+    successRedirect: string;
+    failedRedirect: string;
+    mockCode: string;
+  }): Promise<{ redirectUrl: string; claveCode: string }> {
+    if (this.config.signingProviderMode === 'mock') {
+      const separator = input.successRedirect.includes('?') ? '&' : '?';
+      return {
+        redirectUrl: `${input.successRedirect}${separator}code=${encodeURIComponent(
+          input.mockCode,
+        )}`,
+        claveCode: input.mockCode,
+      };
+    }
+
+    const result = await this.claveUnicaClient.requestAuthorizationCode({
+      successRedirect: input.successRedirect,
+      failedRedirect: input.failedRedirect,
+    });
+    return { redirectUrl: result.redirectUrl, claveCode: result.code };
+  }
+
+  /**
+   * Exchanges a ClaveUnica callback code for a fresh idValidacion. Used to
+   * renew the short-lived ClaveUnica validation the RA requires for FEA.
+   */
+  async refreshClaveValidation(input: {
+    callbackCode: string;
+  }): Promise<{ claveIdValidation: string }> {
+    if (this.config.signingProviderMode === 'mock') {
+      return { claveIdValidation: `mock-clave-validation-${randomUUID()}` };
+    }
+
+    const tokenResult = await this.claveUnicaClient.exchangeToken(
+      input.callbackCode,
+    );
+    const userInfo = await this.claveUnicaClient.getUserInfo({
+      accessToken: tokenResult.accessToken,
+      code: input.callbackCode,
+    });
+    const claveIdValidation =
+      coerceString(
+        deepFindValue(userInfo.raw, [
+          'idValidacion',
+          'idValidation',
+          'validationId',
+        ]),
+      ) ?? tokenResult.idValidation;
+    if (!claveIdValidation) {
+      // Log the response shape (keys only, no PII) so we can map the field.
+      const shape =
+        userInfo.raw && typeof userInfo.raw === 'object'
+          ? JSON.stringify(this.describeShape(userInfo.raw))
+          : typeof userInfo.raw;
+      this.logger.warn(
+        `ClaveUnica users/info returned no idValidacion. Response shape: ${shape}`,
+      );
+      throw new Error(
+        'ClaveUnica user info did not include an idValidacion for the enrollment.',
+      );
+    }
+    return { claveIdValidation };
+  }
+
+  /** Nested key structure of a provider payload, values omitted (no PII). */
+  private describeShape(value: unknown, depth = 0): unknown {
+    if (depth > 3 || value === null || typeof value !== 'object') {
+      return typeof value;
+    }
+    if (Array.isArray(value)) {
+      return value.length
+        ? [this.describeShape(value[0], depth + 1)]
+        : [];
+    }
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        this.describeShape(child, depth + 1),
+      ]),
+    );
   }
 
   async completeAuthorization(input: {
@@ -122,13 +209,14 @@ export class ProviderService {
       accessToken: tokenResult.accessToken,
       code: callbackCode,
     });
-    const claveIdValidation = coerceString(
-      deepFindValue(userInfo.raw, [
-        'idValidacion',
-        'idValidation',
-        'validationId',
-      ]),
-    );
+    const claveIdValidation =
+      coerceString(
+        deepFindValue(userInfo.raw, [
+          'idValidacion',
+          'idValidation',
+          'validationId',
+        ]),
+      ) ?? tokenResult.idValidation;
     const externalProfile = this.mergeExternalProfileOverrides(
       userInfo.profile,
       input.providerContext?.externalProfileOverrides,
@@ -241,6 +329,7 @@ export class ProviderService {
           idValidation:
             input.providerContext.idValidation ??
             `mock-validation-${randomUUID()}`,
+          answerIdValidation: `mock-answer-validation-${randomUUID()}`,
         },
         auditMeta: { provider: 'mock', stage: 'challenge' },
       };
@@ -256,10 +345,12 @@ export class ProviderService {
       challengeToken,
     );
 
+    // Keep the creation validation id (idValidation) intact: the RA expects
+    // both the ingreso and respuesta validation ids, comma-separated.
     return {
       providerContext: {
         ...input.providerContext,
-        idValidation: result.idValidation ?? input.providerContext.idValidation,
+        answerIdValidation: result.idValidation ?? undefined,
       },
       auditMeta: { provider: 'live', stage: 'challenge', raw: result.raw },
     };
@@ -281,22 +372,35 @@ export class ProviderService {
 
     if (
       !input.providerContext.externalProfile ||
-      !input.providerContext.idValidation
+      !(
+        input.providerContext.idValidation ||
+        input.providerContext.answerIdValidation
+      )
     ) {
       throw new Error('Provider context is incomplete for RA request.');
     }
 
-    // The provider expects the ClaveUnica and challenge validation ids
-    // together, comma-separated (see WSIngresoSolicitud sample payload).
+    // The RA expects the validation ids comma-separated (see the Postman
+    // sample: <idValidacion>8Gpyg7pFUG5jD,1R3h4htrtmT</idValidacion>).
+    // ClaveUnica's users/info returns no validation id, so in practice the
+    // pair is [ingresoValidacionChallenge, respuestaValidacionChallenge].
     const idValidation = [
       input.providerContext.claveIdValidation,
       input.providerContext.idValidation,
+      input.providerContext.answerIdValidation,
     ]
       .filter(
         (value, index, values): value is string =>
           Boolean(value) && values.indexOf(value) === index,
       )
       .join(',');
+
+    this.logger.log(
+      `RA request: idValidacion has ${idValidation.split(',').length} id(s) ` +
+        `(clave: ${Boolean(input.providerContext.claveIdValidation)}, ` +
+        `ingreso: ${Boolean(input.providerContext.idValidation)}, ` +
+        `respuesta: ${Boolean(input.providerContext.answerIdValidation)})`,
+    );
 
     const result = await this.raClient.createRequest({
       profile: normalizeProfileForRa(input.providerContext.externalProfile),
@@ -481,6 +585,7 @@ export class ProviderService {
       fechaNacimiento: overrides.fechaNacimiento ?? profile.fechaNacimiento,
       estadoCivil: overrides.estadoCivil ?? profile.estadoCivil,
       telefono: overrides.telefono ?? profile.telefono,
+      email: overrides.email ?? profile.email,
     };
   }
 

@@ -7,10 +7,10 @@ import AppLayout from "../../../layouts/AppLayout.astro";
 import { serverFetch } from "../../../lib/server/api";
 
 const { processId } = Astro.params;
-const processResponse = await serverFetch(
-  Astro.request,
-  `/api/signing/processes/${processId}`,
-);
+const [processResponse, paymentResponse] = await Promise.all([
+  serverFetch(Astro.request, `/api/signing/processes/${processId}`),
+  serverFetch(Astro.request, `/api/signing/processes/${processId}/payment`),
+]);
 if (!processResponse.ok) {
   return Astro.redirect("/history");
 }
@@ -23,10 +23,6 @@ if (process.status !== "CONFIGURED") {
   return Astro.redirect(`/sign/${processId}/progress`);
 }
 
-const paymentResponse = await serverFetch(
-  Astro.request,
-  `/api/signing/processes/${processId}/payment`,
-);
 const payment = paymentResponse.ok
   ? ((await paymentResponse.json()) as PaymentEligibilityResponse)
   : null;

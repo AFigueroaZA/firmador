@@ -23,7 +23,10 @@ describe('profile field normalization', () => {
     expect(normalizeNumeroDocumento('123.456.789')).toBe('123456789');
     expect(NUMERO_DOCUMENTO_PATTERN.test('A012345678')).toBe(true);
     expect(NUMERO_DOCUMENTO_PATTERN.test('123456789')).toBe(true);
-    expect(NUMERO_DOCUMENTO_PATTERN.test('ABC123')).toBe(false);
+    // Cedulas nuevas traen letras intercaladas en la serie.
+    expect(NUMERO_DOCUMENTO_PATTERN.test('B5S270827')).toBe(true);
+    expect(NUMERO_DOCUMENTO_PATTERN.test('ABCDEF')).toBe(false);
+    expect(NUMERO_DOCUMENTO_PATTERN.test('12345')).toBe(false);
   });
 
   it('normalizes birth dates to ISO format', () => {

@@ -52,6 +52,22 @@ export const coerceString = (value: unknown) => {
   return undefined;
 };
 
+/** Nested key structure of a provider payload, values omitted (no PII). */
+export const describePayloadShape = (value: unknown, depth = 0): unknown => {
+  if (depth > 3 || value === null || typeof value !== 'object') {
+    return typeof value;
+  }
+  if (Array.isArray(value)) {
+    return value.length ? [describePayloadShape(value[0], depth + 1)] : [];
+  }
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+      key,
+      describePayloadShape(child, depth + 1),
+    ]),
+  );
+};
+
 export const xmlEscape = (value: string | number | boolean | undefined) => {
   if (value === undefined || value === null) {
     return '';

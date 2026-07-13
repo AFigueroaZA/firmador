@@ -123,10 +123,17 @@ export interface EnrollmentChallenge {
   questions: ChallengeQuestion[];
 }
 
+export interface EnrollmentClaveValidation {
+  validatedAt: string | null;
+  /** ClaveUnica validations are short-lived at the provider; stale ones must be redone. */
+  fresh: boolean;
+}
+
 export interface EnrollmentStatusResponse {
   status: EnrollmentStatus;
   validUntil: string | null;
   challenge: EnrollmentChallenge | null;
+  claveValidation?: EnrollmentClaveValidation | null;
 }
 
 export interface AuditEventSummary {

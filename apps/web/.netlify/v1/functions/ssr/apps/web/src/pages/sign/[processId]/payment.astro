@@ -1,0 +1,137 @@
+---
+import type {
+  PaymentEligibilityResponse,
+  SigningProcessDetail,
+} from "@firmador/shared";
+import AppLayout from "../../../layouts/AppLayout.astro";
+import { serverFetch } from "../../../lib/server/api";
+
+const { processId } = Astro.params;
+const processResponse = await serverFetch(
+  Astro.request,
+  `/api/signing/processes/${processId}`,
+);
+if (!processResponse.ok) {
+  return Astro.redirect("/history");
+}
+
+const process = (await processResponse.json()) as SigningProcessDetail;
+if (process.status === "SIGNED" || process.status === "FAILED" || process.status === "EXPIRED") {
+  return Astro.redirect(`/sign/${processId}/result`);
+}
+if (process.status !== "CONFIGURED") {
+  return Astro.redirect(`/sign/${processId}/progress`);
+}
+
+const paymentResponse = await serverFetch(
+  Astro.request,
+  `/api/signing/processes/${processId}/payment`,
+);
+const payment = paymentResponse.ok
+  ? ((await paymentResponse.json()) as PaymentEligibilityResponse)
+  : null;
+---
+
+<AppLayout title="Confirmar firma" user={Astro.locals.user}>
+  <section class="mx-auto max-w-3xl space-y-5">
+    <article class="panel animate-rise px-6 py-6">
+      <h2 class="text-lg font-semibold text-ink">Confirmar firma</h2>
+      <p class="mt-2 text-sm text-slate-600">
+        {payment?.mode === "live"
+          ? "Revisa el documento antes de iniciar la autorizacion externa con el proveedor de firma."
+          : "Este paso representa la validacion de saldo antes de firmar el PDF en modo demo."}
+      </p>
+
+      <dl class="mt-5 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">Documento</dt>
+          <dd>{process.originalFileName}</dd>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Modo" : "Costo"}</dt>
+          <dd>{payment?.mode === "live" ? "Proveedor externo" : `${payment?.costCredits ?? 1} credito demo`}</dd>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Autorizacion" : "Saldo disponible"}</dt>
+          <dd>
+            {payment?.mode === "live"
+              ? payment?.requiresExternalAuthorization
+                ? "Requerida"
+                : "No requerida (certificado vigente)"
+              : payment?.availableCredits ?? 0}
+          </dd>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-3">
+          <dt class="font-semibold text-slate-700">Estado</dt>
+          <dd>{payment?.eligible ? "Disponible" : "No disponible"}</dd>
+        </div>
+      </dl>
+
+      {!payment?.eligible && (
+        <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {payment?.message ?? "No se pudo validar el saldo demo."}
+        </div>
+      )}
+      {payment?.eligible && payment?.mode === "live" && !payment?.requiresExternalAuthorization && (
+        <div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Ya cuentas con un certificado vigente: el documento se firmara directamente, sin repetir la validacion con Clave Unica.
+        </div>
+      )}
+
+      <div class="mt-6 flex flex-wrap gap-3">
+        <button class="button-primary" disabled={!payment?.eligible} id="start-signing-button" type="button">
+          {payment?.mode === "live"
+            ? payment?.requiresExternalAuthorization
+              ? "Autorizar firma"
+              : "Firmar documento"
+            : "Firmar documento"}
+        </button>
+        <a class="button-secondary" href="/sign/new">Elegir otro PDF</a>
+      </div>
+      <div class="mt-4 hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="start-signing-error"></div>
+    </article>
+  </section>
+
+  <script is:inline data-mode={payment?.mode ?? "mock"} data-process-id={processId}>
+    const processId = document.currentScript?.getAttribute("data-process-id") ?? "";
+    const mode = document.currentScript?.getAttribute("data-mode") ?? "mock";
+    const button = document.querySelector("#start-signing-button");
+    const errorBox = document.querySelector("#start-signing-error");
+
+    button?.addEventListener("click", async () => {
+      button.setAttribute("disabled", "true");
+      errorBox?.classList.add("hidden");
+
+      const response = mode === "live"
+        ? await fetch(`/api/signing/processes/${processId}/authorize`)
+        : await fetch(`/api/signing/processes/${processId}/start-signing`, {
+            method: "POST",
+          });
+
+      if (!response.ok) {
+        button.removeAttribute("disabled");
+        if (errorBox) {
+          errorBox.textContent = "No se pudo iniciar la firma. Revisa el estado del proceso.";
+          errorBox.classList.remove("hidden");
+        }
+        return;
+      }
+
+      if (mode === "live") {
+        const result = await response.json();
+        if (typeof result.url === "string" && result.url) {
+          window.location.assign(result.url);
+          return;
+        }
+        button.removeAttribute("disabled");
+        if (errorBox) {
+          errorBox.textContent = "El proveedor no devolvio una URL de autorizacion.";
+          errorBox.classList.remove("hidden");
+        }
+        return;
+      }
+
+      window.location.assign(`/sign/${processId}/progress`);
+    });
+  </script>
+</AppLayout>
