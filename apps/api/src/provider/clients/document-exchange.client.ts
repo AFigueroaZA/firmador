@@ -77,7 +77,12 @@ export const buildSignDocumentSoapEnvelope = (input: {
   fileName: string;
   pdfBuffer: Buffer;
   signOptions: SignOptions;
-}) => `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.signserver.esign.com/">
+}) => {
+  const coordinate = (value: number | undefined) =>
+    value !== undefined && Number.isFinite(value) ? Math.round(value) : '';
+  const { x, y, width, height } = input.signOptions;
+
+  return `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ws="http://ws.signserver.esign.com/">
   <soapenv:Header/>
   <soapenv:Body>
     <ws:intercambiaDocCoorPDFTSAPin>
@@ -93,19 +98,13 @@ export const buildSignDocumentSoapEnvelope = (input: {
         <MetaData></MetaData>
         <UtilizaImagen>${xmlEscape(input.signOptions.visible)}</UtilizaImagen>
         <ImagenDinamica>${xmlEscape(input.signOptions.visible)}</ImagenDinamica>
-        <CoordenadaXInferiorizquierda>${xmlEscape(input.signOptions.x)}</CoordenadaXInferiorizquierda>
-        <CoordenadaYInferiorizquierda>${xmlEscape(input.signOptions.y)}</CoordenadaYInferiorizquierda>
+        <CoordenadaXInferiorizquierda>${xmlEscape(coordinate(x))}</CoordenadaXInferiorizquierda>
+        <CoordenadaYInferiorizquierda>${xmlEscape(coordinate(y))}</CoordenadaYInferiorizquierda>
         <CoordenadaXSuperiorDerecha>${xmlEscape(
-          input.signOptions.x !== undefined &&
-            input.signOptions.width !== undefined
-            ? input.signOptions.x + input.signOptions.width
-            : '',
+          x !== undefined && width !== undefined ? coordinate(x + width) : '',
         )}</CoordenadaXSuperiorDerecha>
         <CoordenadaYSuperiorDerecha>${xmlEscape(
-          input.signOptions.y !== undefined &&
-            input.signOptions.height !== undefined
-            ? input.signOptions.y + input.signOptions.height
-            : '',
+          y !== undefined && height !== undefined ? coordinate(y + height) : '',
         )}</CoordenadaYSuperiorDerecha>
         <PaginaImagen>${xmlEscape(
           input.signOptions.page ? input.signOptions.page - 1 : 0,
@@ -116,3 +115,4 @@ export const buildSignDocumentSoapEnvelope = (input: {
     </ws:intercambiaDocCoorPDFTSAPin>
   </soapenv:Body>
 </soapenv:Envelope>`;
+};

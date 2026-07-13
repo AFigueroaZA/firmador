@@ -61,15 +61,36 @@ describe('preparePdfForSigning', () => {
       }) ?? false;
     expect(hasDirectImage).toBe(true);
 
-    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 176 });
+    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 152 });
     expect(result.signOptions).toEqual({
       visible: true,
       page: 2,
-      x: 24,
-      y: 24,
-      width: 272,
+      x: 16,
+      y: 16,
+      width: 288,
       height: 96,
     });
+  });
+
+  it('normalizes a decimal A4 page into compact integer provider geometry', async () => {
+    const original = await PDFDocument.create();
+    original.addPage([595.2756, 841.8898]);
+
+    const result = await preparePdfForSigning({
+      originalPdf: Buffer.from(await original.save()),
+      imageBuffer: null,
+      signOptions: { visible: true },
+    });
+
+    const prepared = await PDFDocument.load(result.pdfBuffer);
+    const providerPage = prepared.getPage(1).getSize();
+    const { x, y, width, height } = result.signOptions;
+
+    expect(providerPage.width).toBe(595);
+    expect(providerPage.height).toBeLessThanOrEqual(176);
+    expect([x, y, width, height].every(Number.isInteger)).toBe(true);
+    expect((x ?? 0) + (width ?? 0)).toBeLessThanOrEqual(providerPage.width);
+    expect((y ?? 0) + (height ?? 0)).toBeLessThanOrEqual(providerPage.height);
   });
 
   it('does not stamp a manual image when the user selected an invisible signature', async () => {

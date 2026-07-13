@@ -298,17 +298,15 @@ export class SigningService {
     if (this.config.signingProviderMode === 'live') {
       const active = await this.findActiveLiveRegistration(requestUser.id);
       if (active) {
-        const signed = await this.signWithExistingRegistration(
+        await this.signWithExistingRegistration(
           requestUser,
           process,
           active.registration,
           active.context,
         );
-        if (signed) {
-          return {
-            url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
-          };
-        }
+        return {
+          url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
+        };
       }
 
       if (!options?.skipEnrollmentRedirect) {
@@ -922,22 +920,10 @@ export class SigningService {
           signatureRegistrationId: registration.id,
         },
       });
-      return true;
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unexpected signing failure.';
-      process.status = fromStatus;
-      await this.saveProcess(process);
-      await this.auditService.record({
-        processId: process.id,
-        actor: 'system',
-        type: 'REGISTRATION_SIGN_FAILED',
-        message: `Direct signing with stored enrollment failed (${message}); falling back to full provider authorization.`,
-        fromStatus: 'SIGNING',
-        toStatus: process.status,
-        meta: { signatureRegistrationId: registration.id },
-      });
-      return false;
+      await this.failProcess(process, message, 'system');
     }
   }
 

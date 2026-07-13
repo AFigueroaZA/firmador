@@ -58,13 +58,14 @@ export const preparePdfForSigning = async (
   }
 
   const lastOriginalPage = pdfDocument.getPage(originalPageCount - 1);
-  const { width: pageWidth, height: pageHeight } = lastOriginalPage.getSize();
-  const margin = Math.min(24, pageWidth / 10, pageHeight / 10);
-  const headingHeight = 32;
+  const { width: originalPageWidth } = lastOriginalPage.getSize();
+  const pageWidth = Math.max(1, Math.round(originalPageWidth));
+  const margin = Math.max(1, Math.min(16, Math.floor(pageWidth / 10)));
+  const headingHeight = 24;
   const providerWidth = Math.max(1, pageWidth - margin * 2);
   const providerHeight = Math.min(
-    180,
-    Math.max(96, Math.round(providerWidth / 3)),
+    120,
+    Math.max(96, Math.round(providerWidth / 4)),
   );
   const providerPageHeight = margin * 2 + headingHeight + providerHeight;
   const providerPage = pdfDocument.addPage([pageWidth, providerPageHeight]);
