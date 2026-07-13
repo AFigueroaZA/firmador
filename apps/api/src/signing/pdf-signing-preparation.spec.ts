@@ -61,15 +61,52 @@ describe('preparePdfForSigning', () => {
       }) ?? false;
     expect(hasDirectImage).toBe(true);
 
-    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 152 });
+    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 100 });
     expect(result.signOptions).toEqual({
       visible: true,
       page: 2,
-      x: 16,
-      y: 16,
-      width: 288,
-      height: 96,
+      x: 12,
+      y: 12,
+      width: 296,
+      height: 56,
     });
+  });
+
+  it('preserves the alpha channel of a transparent PNG signature', async () => {
+    const original = await PDFDocument.create();
+    original.addPage([300, 400]);
+    const transparentPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAANSURBVBhXY/jPAAb/AQkAAf+6pl4DAAAAAElFTkSuQmCC',
+      'base64',
+    );
+
+    const result = await preparePdfForSigning({
+      originalPdf: Buffer.from(await original.save()),
+      imageBuffer: transparentPng,
+      signOptions: {
+        visible: true,
+        page: 1,
+        x: 20,
+        y: 30,
+        width: 100,
+        height: 50,
+      },
+    });
+
+    const prepared = await PDFDocument.load(result.pdfBuffer);
+    const resources = prepared.getPage(0).node.Resources();
+    const xObjects = resources?.lookupMaybe(PDFName.of('XObject'), PDFDict);
+    const imageStreams =
+      xObjects?.values().flatMap((value) => {
+        const stream = prepared.context.lookupMaybe(value, PDFStream);
+        return stream?.dict.lookupMaybe(PDFName.of('Subtype'), PDFName) ===
+          PDFName.of('Image')
+          ? [stream]
+          : [];
+      }) ?? [];
+
+    expect(imageStreams).toHaveLength(1);
+    expect(imageStreams[0]?.dict.has(PDFName.of('SMask'))).toBe(true);
   });
 
   it('normalizes a decimal A4 page into compact integer provider geometry', async () => {
@@ -87,7 +124,9 @@ describe('preparePdfForSigning', () => {
     const { x, y, width, height } = result.signOptions;
 
     expect(providerPage.width).toBe(595);
-    expect(providerPage.height).toBeLessThanOrEqual(176);
+    expect(providerPage.height).toBeLessThanOrEqual(114);
+    expect(width).toBeLessThanOrEqual(420);
+    expect(height).toBeLessThanOrEqual(70);
     expect([x, y, width, height].every(Number.isInteger)).toBe(true);
     expect((x ?? 0) + (width ?? 0)).toBeLessThanOrEqual(providerPage.width);
     expect((y ?? 0) + (height ?? 0)).toBeLessThanOrEqual(providerPage.height);

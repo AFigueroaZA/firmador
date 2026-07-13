@@ -22,6 +22,12 @@ const hasManualSignaturePlacement = (options: SignOptions, pageCount: number) =>
   options.width !== undefined &&
   options.height !== undefined;
 
+const isPng = (buffer: Buffer) =>
+  buffer.length >= 8 &&
+  buffer
+    .subarray(0, 8)
+    .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+
 export const preparePdfForSigning = async (
   input: PreparePdfForSigningInput,
 ): Promise<PreparedPdfForSigning> => {
@@ -42,9 +48,7 @@ export const preparePdfForSigning = async (
     input.imageBuffer &&
     hasManualSignaturePlacement(input.signOptions, originalPageCount)
   ) {
-    const isPng =
-      input.imageBuffer[0] === 0x89 && input.imageBuffer[1] === 0x50;
-    const image = isPng
+    const image = isPng(input.imageBuffer)
       ? await pdfDocument.embedPng(input.imageBuffer)
       : await pdfDocument.embedJpg(input.imageBuffer);
     pdfDocument
@@ -60,19 +64,20 @@ export const preparePdfForSigning = async (
   const lastOriginalPage = pdfDocument.getPage(originalPageCount - 1);
   const { width: originalPageWidth } = lastOriginalPage.getSize();
   const pageWidth = Math.max(1, Math.round(originalPageWidth));
-  const margin = Math.max(1, Math.min(16, Math.floor(pageWidth / 10)));
-  const headingHeight = 24;
-  const providerWidth = Math.max(1, pageWidth - margin * 2);
+  const margin = Math.max(1, Math.min(12, Math.floor(pageWidth / 10)));
+  const headingHeight = 20;
+  const providerWidth = Math.max(1, Math.min(420, pageWidth - margin * 2));
   const providerHeight = Math.min(
-    120,
-    Math.max(96, Math.round(providerWidth / 4)),
+    70,
+    Math.max(56, Math.round(providerWidth / 6)),
   );
+  const providerX = Math.max(0, Math.round((pageWidth - providerWidth) / 2));
   const providerPageHeight = margin * 2 + headingHeight + providerHeight;
   const providerPage = pdfDocument.addPage([pageWidth, providerPageHeight]);
   const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
   providerPage.drawText('Firma Electrónica Avanzada', {
-    x: margin,
-    y: margin + providerHeight + 12,
+    x: providerX,
+    y: margin + providerHeight + 8,
     size: 9,
     font,
     color: rgb(0.42, 0.45, 0.5),
@@ -83,7 +88,7 @@ export const preparePdfForSigning = async (
     signOptions: {
       visible: true,
       page: originalPageCount + 1,
-      x: margin,
+      x: providerX,
       y: margin,
       width: providerWidth,
       height: providerHeight,
