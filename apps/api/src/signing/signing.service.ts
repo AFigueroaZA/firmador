@@ -149,16 +149,7 @@ export class SigningService {
       provider: 'FIRMA_CL',
       providerProcessId: null,
       requestedAt: new Date(),
-      signOptions,
-      pdfMetadata: metadata.pdfMetadata,
-      originalStoragePath,
       signedStoragePath: null,
-      signatureImageStoragePath,
-      externalAuthState: null,
-      externalIdentity: null,
-      externalProfileOverrides,
-      providerContextEncrypted: null,
-      challenge: null,
       errorMessage: null,
       expiresAt: new Date(
         Date.now() + this.config.tempFileTtlHours * 60 * 60 * 1000,
@@ -166,6 +157,17 @@ export class SigningService {
       signedAt: null,
     });
 
+    // TypeORM's Repository.create() copies mapped columns and relations, but
+    // does not invoke these virtual setters backed by the metadata JSONB.
+    process.signOptions = signOptions;
+    process.pdfMetadata = metadata.pdfMetadata;
+    process.originalStoragePath = originalStoragePath;
+    process.signatureImageStoragePath = signatureImageStoragePath;
+    process.externalAuthState = null;
+    process.externalIdentity = null;
+    process.externalProfileOverrides = externalProfileOverrides;
+    process.providerContextEncrypted = null;
+    process.challenge = null;
     process.status = hasInitialSignOptions ? 'CONFIGURED' : 'UPLOADED';
     await this.saveProcess(process);
     if (hasInitialSignOptions && signOptions.visible) {

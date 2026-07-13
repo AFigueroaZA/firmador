@@ -25,6 +25,14 @@ const hasManualSignaturePlacement = (options: SignOptions, pageCount: number) =>
 export const preparePdfForSigning = async (
   input: PreparePdfForSigningInput,
 ): Promise<PreparedPdfForSigning> => {
+  if (
+    input.signOptions.visible &&
+    input.signOptions.imageFileName &&
+    !input.imageBuffer
+  ) {
+    throw new Error('Configured signature image is unavailable.');
+  }
+
   const pdfDocument = await PDFDocument.load(input.originalPdf, {
     ignoreEncryption: true,
   });
@@ -51,12 +59,15 @@ export const preparePdfForSigning = async (
 
   const lastOriginalPage = pdfDocument.getPage(originalPageCount - 1);
   const { width: pageWidth, height: pageHeight } = lastOriginalPage.getSize();
-  const providerPage = pdfDocument.addPage([pageWidth, pageHeight]);
-
   const margin = Math.min(24, pageWidth / 10, pageHeight / 10);
   const headingHeight = 32;
   const providerWidth = Math.max(1, pageWidth - margin * 2);
-  const providerHeight = Math.max(1, pageHeight - margin * 2 - headingHeight);
+  const providerHeight = Math.min(
+    180,
+    Math.max(96, Math.round(providerWidth / 3)),
+  );
+  const providerPageHeight = margin * 2 + headingHeight + providerHeight;
+  const providerPage = pdfDocument.addPage([pageWidth, providerPageHeight]);
   const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
   providerPage.drawText('Firma Electrónica Avanzada', {
     x: margin,

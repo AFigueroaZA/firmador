@@ -9,7 +9,7 @@ const SIGNATURE_IMAGE_PATH = resolve(
 );
 
 describe('preparePdfForSigning', () => {
-  it('preserves original pages and annotations while adding an adaptive provider page', async () => {
+  it('preserves original pages while adding a compact horizontal provider page', async () => {
     const original = await PDFDocument.create();
     const originalPage = original.addPage([320, 480]);
     originalPage.drawText('Documento con codigo de barras', { x: 24, y: 440 });
@@ -61,14 +61,14 @@ describe('preparePdfForSigning', () => {
       }) ?? false;
     expect(hasDirectImage).toBe(true);
 
-    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 480 });
+    expect(prepared.getPage(1).getSize()).toEqual({ width: 320, height: 176 });
     expect(result.signOptions).toEqual({
       visible: true,
       page: 2,
       x: 24,
       y: 24,
       width: 272,
-      height: 400,
+      height: 96,
     });
   });
 
@@ -87,5 +87,26 @@ describe('preparePdfForSigning', () => {
     const xObjects = resources?.lookupMaybe(PDFName.of('XObject'), PDFDict);
     expect(xObjects?.keys().length ?? 0).toBe(0);
     expect(result.signOptions.page).toBe(2);
+  });
+
+  it('rejects a visible signature when its configured image is unavailable', async () => {
+    const original = await PDFDocument.create();
+    original.addPage([300, 400]);
+
+    await expect(
+      preparePdfForSigning({
+        originalPdf: Buffer.from(await original.save()),
+        imageBuffer: null,
+        signOptions: {
+          visible: true,
+          imageFileName: 'firma.png',
+          page: 1,
+          x: 20,
+          y: 20,
+          width: 100,
+          height: 50,
+        },
+      }),
+    ).rejects.toThrow('Configured signature image is unavailable');
   });
 });
