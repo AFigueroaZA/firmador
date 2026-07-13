@@ -15,12 +15,6 @@ import type {
   SigningProcessDetail,
   SigningProcessSummary,
 } from '@firmador/shared';
-import {
-  PDFDocument,
-  type PDFEmbeddedPage,
-  rgb,
-  StandardFonts,
-} from 'pdf-lib';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Express } from 'express';
@@ -60,6 +54,7 @@ import {
 } from './sign-options';
 import { SigningProcessEntity } from './entities/signing-process.entity';
 import { mapProcessToDetail, mapProcessToSummary } from './signing.mapper';
+import { preparePdfForSigning } from './pdf-signing-preparation';
 
 @Injectable()
 export class SigningService {
@@ -744,9 +739,8 @@ export class SigningService {
    * - The user's drawn signature image (if any) is stamped into the page
    *   content at the position picked in the wizard, so it travels with the
    *   document and gets covered by the cryptographic signature.
-   * - The first page is expanded at the bottom, and the provider's
-   *   mandatory dynamic stamp (ImagenDinamica) is pointed at that new
-   *   strip, so it never overlaps the original content.
+   * - A dedicated final page receives the provider's mandatory dynamic
+   *   stamp (ImagenDinamica), preserving every original page and annotation.
    */
   private async prepareDocumentForSigning(
     process: SigningProcessEntity,
@@ -756,85 +750,26 @@ export class SigningService {
       ? await this.fileStore.read(process.signatureImageStoragePath)
       : null;
 
-    const pdfDocument = await PDFDocument.load(originalPdf, {
-      ignoreEncryption: true,
-    });
-
     const options = process.signOptions;
     const canStampImage = Boolean(
       imageBuffer &&
-        options.visible &&
-        options.page !== undefined &&
-        options.page >= 1 &&
-        options.page <= pdfDocument.getPageCount() &&
-        options.x !== undefined &&
-        options.y !== undefined &&
-        options.width !== undefined &&
-        options.height !== undefined,
+      options.visible &&
+      options.page !== undefined &&
+      options.page >= 1 &&
+      options.x !== undefined &&
+      options.y !== undefined &&
+      options.width !== undefined &&
+      options.height !== undefined,
     );
     this.logger.log(
       `Preparing document for signing: image=${Boolean(imageBuffer)}, ` +
         `visible=${options.visible}, page=${options.page}, stamped=${canStampImage}`,
     );
-    if (imageBuffer && canStampImage) {
-      const isPng = imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50;
-      const image = isPng
-        ? await pdfDocument.embedPng(imageBuffer)
-        : await pdfDocument.embedJpg(imageBuffer);
-      pdfDocument.getPage((options.page as number) - 1).drawImage(image, {
-        x: options.x as number,
-        y: options.y as number,
-        width: options.width as number,
-        height: options.height as number,
-      });
-    }
-
-    // Expand the last page downwards and reserve the new space for the
-    // provider strip — signatures conventionally close the document. The
-    // original content (including the stamped image) is re-drawn shifted
-    // up, so nothing overlaps.
-    const margin = 24;
-    const stripHeight = 110;
-    const extraSpace = stripHeight + margin * 2;
-
-    const lastIndex = pdfDocument.getPageCount() - 1;
-    const lastPage = pdfDocument.getPage(lastIndex);
-    const { width: pageWidth, height: pageHeight } = lastPage.getSize();
-    // Blank pages have no content stream and cannot be embedded (the
-    // failure surfaces lazily at save()); the expanded replacement simply
-    // stays blank above the strip in that case.
-    const embeddedLastPage: PDFEmbeddedPage | null = lastPage.node.Contents()
-      ? await pdfDocument.embedPage(lastPage)
-      : null;
-    const expandedPage = pdfDocument.insertPage(lastIndex, [
-      pageWidth,
-      pageHeight + extraSpace,
-    ]);
-    if (embeddedLastPage) {
-      expandedPage.drawPage(embeddedLastPage, { x: 0, y: extraSpace });
-    }
-    pdfDocument.removePage(lastIndex + 1);
-
-    const font = await pdfDocument.embedFont(StandardFonts.Helvetica);
-    expandedPage.drawText('Firma Electrónica Avanzada', {
-      x: margin,
-      y: margin + stripHeight + 8,
-      size: 9,
-      font,
-      color: rgb(0.42, 0.45, 0.5),
+    return preparePdfForSigning({
+      originalPdf,
+      imageBuffer,
+      signOptions: options,
     });
-
-    return {
-      pdfBuffer: Buffer.from(await pdfDocument.save()),
-      signOptions: {
-        visible: true,
-        page: lastIndex + 1,
-        x: margin,
-        y: margin,
-        width: pageWidth - margin * 2,
-        height: stripHeight,
-      },
-    };
   }
 
   async downloadSignedDocument(requestUser: RequestUser, processId: string) {
