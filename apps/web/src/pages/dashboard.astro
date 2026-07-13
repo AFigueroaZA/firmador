@@ -8,8 +8,10 @@ interface HistoryResponse {
   items: Array<{ status: string }>;
 }
 
-const historyResponse = await serverFetch(Astro.request, "/api/history");
-const identityResponse = await serverFetch(Astro.request, "/api/identity/me");
+const [historyResponse, identityResponse] = await Promise.all([
+  serverFetch(Astro.request, "/api/history"),
+  serverFetch(Astro.request, "/api/identity/me"),
+]);
 const history = historyResponse.ok
   ? ((await historyResponse.json()) as HistoryResponse)
   : { items: [] };
