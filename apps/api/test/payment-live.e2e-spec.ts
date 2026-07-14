@@ -107,6 +107,22 @@ describeSupabaseE2e('Live provider payment eligibility (Supabase e2e)', () => {
       }),
     );
 
+    const balanceResponse = await request(httpServer)
+      .get('/api/balance')
+      .set('Cookie', cookies)
+      .expect(200);
+    let expectedBalance = (balanceResponse.body as { currentBalance: number })
+      .currentBalance;
+    if (expectedBalance < 1) {
+      const purchaseResponse = await request(httpServer)
+        .post('/api/balance/purchases')
+        .set('Cookie', cookies)
+        .send({ operationId: randomUUID(), credits: 1 })
+        .expect(201);
+      expectedBalance = (purchaseResponse.body as { currentBalance: number })
+        .currentBalance;
+    }
+
     const createResponse = await request(httpServer)
       .post('/api/signing/processes')
       .set('Cookie', cookies)
@@ -132,7 +148,8 @@ describeSupabaseE2e('Live provider payment eligibility (Supabase e2e)', () => {
       mode: 'live',
       eligible: true,
       costCredits: 1,
-      availableCredits: 1,
+      availableCredits: expectedBalance,
+      reason: 'READY',
     });
   });
 });

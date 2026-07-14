@@ -9,6 +9,7 @@ import type { Request, Response } from 'express';
 import { Repository } from 'typeorm';
 import { loadAppConfig } from '../config/app.config';
 import { SupabaseService } from '../supabase/supabase.service';
+import { CreditsService } from '../credits/credits.service';
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from './auth.constants';
 import type { LoginDto } from './dto/login.dto';
 import { RoleEntity } from './role.entity';
@@ -29,6 +30,7 @@ export class AuthService {
     @InjectRepository(RoleEntity)
     private readonly roleRepository: Repository<RoleEntity>,
     private readonly supabaseService: SupabaseService,
+    private readonly creditsService: CreditsService,
   ) {}
 
   async seedDefaultUsers() {
@@ -200,7 +202,9 @@ export class AuthService {
       isActive: true,
       lastLoginAt: null,
     });
-    return this.userRepository.save(entity);
+    const user = await this.userRepository.save(entity);
+    await this.creditsService.ensureAccount(user.id);
+    return user;
   }
 
   issueSessionForUser(user: UserEntity, response: Response): AuthSession {
@@ -255,7 +259,7 @@ export class AuthService {
     }
 
     const role = await this.getRole(input.role);
-    await this.userRepository.save(
+    const user = await this.userRepository.save(
       this.userRepository.create({
         authUserId: data.user.id,
         roleId: role.id,
@@ -269,6 +273,9 @@ export class AuthService {
         lastLoginAt: null,
       }),
     );
+    if (input.role === 'operator') {
+      await this.creditsService.ensureAccount(user.id);
+    }
   }
 
   private getSeedUserConfig() {

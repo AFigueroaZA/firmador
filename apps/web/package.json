@@ -7,7 +7,8 @@
     "dev": "astro dev --host",
     "build": "astro build",
     "preview": "astro preview --host",
-    "check": "astro check"
+    "check": "astro check",
+    "test": "node --test src/lib/server/*.test.mjs"
   },
   "dependencies": {
     "@astrojs/netlify": "6",

@@ -14,14 +14,17 @@ import {
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import type { Express, Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import type { RequestUser } from '../auth/interfaces/request-user.interface';
 import { SessionAuthGuard } from '../auth/guards/session-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { ChallengePayloadDto } from './dto/challenge-payload.dto';
 import { SignOptionsDto } from './dto/sign-options.dto';
 import { SigningService } from './signing.service';
 
 @Controller('api/signing')
-@UseGuards(SessionAuthGuard)
+@UseGuards(SessionAuthGuard, RolesGuard)
+@Roles('operator')
 export class SigningController {
   constructor(private readonly signingService: SigningService) {}
 
@@ -64,7 +67,7 @@ export class SigningController {
     return this.signingService.getProcessDetail(requestUser, processId);
   }
 
-  @Get('processes/:id/authorize')
+  @Post('processes/:id/authorize')
   async getAuthorizationUrl(
     @CurrentUser() requestUser: RequestUser,
     @Param('id') processId: string,

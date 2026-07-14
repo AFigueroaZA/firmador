@@ -112,8 +112,85 @@ export interface PaymentEligibilityResponse {
   eligible: boolean;
   costCredits: number;
   availableCredits: number;
+  reason:
+    | "READY"
+    | "IDENTITY_REQUIRED"
+    | "SIGN_OPTIONS_REQUIRED"
+    | "INSUFFICIENT_CREDITS";
   message: string;
   requiresExternalAuthorization: boolean;
+}
+
+export type CreditMovementType =
+  | "CHARGE"
+  | "CONSUMPTION"
+  | "REFUND"
+  | "ADJUSTMENT";
+
+export interface CreditMovementSummary {
+  id: string;
+  type: CreditMovementType;
+  quantity: number;
+  balanceAfter: number;
+  description: string | null;
+  createdAt: string;
+}
+
+export interface BalanceResponse {
+  currentBalance: number;
+  packs: readonly [1, 5, 10];
+  movements: CreditMovementSummary[];
+}
+
+export interface PurchaseCreditsRequest {
+  operationId: string;
+  credits: 1 | 5 | 10;
+}
+
+export interface PurchaseCreditsResponse {
+  paymentId: string;
+  creditsPurchased: 1 | 5 | 10;
+  currentBalance: number;
+}
+
+export interface AdminDashboardResponse {
+  users: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  identities: {
+    ready: number;
+    pending: number;
+    failed: number;
+  };
+  totalAvailableCredits: number;
+  signing: {
+    total: number;
+    signed: number;
+    inProgress: number;
+    failed: number;
+    expired: number;
+  };
+}
+
+export interface AdminUserSummary {
+  id: string;
+  fullName: string;
+  email: string;
+  isActive: boolean;
+  identityStatus: IdentityStatus;
+  currentBalance: number;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminUsersResponse {
+  items: AdminUserSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 }
 
 export type EnrollmentStatus = "NONE" | "PENDING" | "ACTIVE";

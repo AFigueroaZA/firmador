@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   forwardRef,
   GoneException,
   Injectable,
@@ -37,13 +38,13 @@ import { DocumentStorageService } from '../documents/document-storage.service';
 import { PdfValidationService } from '../documents/pdf-validation.service';
 import { SealedPayloadService } from '../documents/sealed-payload.service';
 import { IdentityService } from '../identity/identity.service';
+import { CreditsService } from '../credits/credits.service';
 import { ProviderService } from '../provider/provider.service';
 import type {
   ExternalProfileOverrides,
   ProviderContext,
 } from '../provider/types';
 import { DocumentEntity } from './entities/document.entity';
-import { SignatureAccountEntity } from './entities/signature-account.entity';
 import { SignatureAssetEntity } from './entities/signature-asset.entity';
 import { SignatureRegistrationEntity } from './entities/signature-registration.entity';
 import { SigningStatusEntity } from './entities/signing-status.entity';
@@ -70,8 +71,6 @@ export class SigningService {
     private readonly documentRepository: Repository<DocumentEntity>,
     @InjectRepository(SignatureAssetEntity)
     private readonly assetRepository: Repository<SignatureAssetEntity>,
-    @InjectRepository(SignatureAccountEntity)
-    private readonly accountRepository: Repository<SignatureAccountEntity>,
     @InjectRepository(SigningStatusEntity)
     private readonly statusRepository: Repository<SigningStatusEntity>,
     private readonly pdfValidationService: PdfValidationService,
@@ -80,6 +79,7 @@ export class SigningService {
     private readonly auditService: AuditService,
     private readonly identityService: IdentityService,
     private readonly providerService: ProviderService,
+    private readonly creditsService: CreditsService,
   ) {
     void DocumentsModule;
     void forwardRef;
@@ -137,7 +137,7 @@ export class SigningService {
         status: 'UPLOADED',
       }),
     );
-    const account = await this.getOrCreateAccount(requestUser.id);
+    const account = await this.creditsService.ensureAccount(requestUser.id);
     const process = this.processRepository.create({
       id: processId,
       userId: requestUser.id,
@@ -259,10 +259,8 @@ export class SigningService {
   async listProcessSummaries(
     requestUser: RequestUser,
   ): Promise<SigningProcessSummary[]> {
-    const where =
-      requestUser.role === 'admin' ? {} : { userId: requestUser.id };
     const items = await this.processRepository.find({
-      where,
+      where: { userId: requestUser.id },
       order: { createdAt: 'DESC' },
     });
 
@@ -294,102 +292,115 @@ export class SigningService {
     }
 
     validateSignOptionsForPdf(process.signOptions, process.pdfMetadata);
+    await this.identityService.ensureCanSign(requestUser.id);
+    const payment = await this.getPaymentEligibility(requestUser, process.id);
+    if (!payment.eligible) {
+      this.throwPaymentIneligibility(payment);
+    }
+    await this.creditsService.reserveForProcess(requestUser.id, process.id);
 
-    if (this.config.signingProviderMode === 'live') {
-      const active = await this.findActiveLiveRegistration(requestUser.id);
-      if (active) {
-        await this.signWithExistingRegistration(
-          requestUser,
-          process,
-          active.registration,
-          active.context,
-        );
-        return {
-          url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
-        };
-      }
-
-      if (!options?.skipEnrollmentRedirect) {
-        const pending = await this.registrationRepository.findOne({
-          where: {
-            userId: requestUser.id,
-            provider: 'FIRMA_CL',
-            status: 'PENDING',
-          },
-          order: { createdAt: 'DESC' },
-        });
-        if (pending) {
-          const next = encodeURIComponent(`/sign/${process.id}/payment`);
+    try {
+      if (this.config.signingProviderMode === 'live') {
+        const active = await this.findActiveLiveRegistration(requestUser.id);
+        if (active) {
+          await this.signWithExistingRegistration(
+            requestUser,
+            process,
+            active.registration,
+            active.context,
+          );
           return {
-            url: `${this.config.webBaseUrl}/enrollment/challenge?next=${next}`,
+            url: `${this.config.webBaseUrl}/sign/${process.id}/result`,
           };
         }
+
+        if (!options?.skipEnrollmentRedirect) {
+          const pending = await this.registrationRepository.findOne({
+            where: {
+              userId: requestUser.id,
+              provider: 'FIRMA_CL',
+              status: 'PENDING',
+            },
+            order: { createdAt: 'DESC' },
+          });
+          if (pending) {
+            const next = encodeURIComponent(`/sign/${process.id}/payment`);
+            return {
+              url: `${this.config.webBaseUrl}/enrollment/challenge?next=${next}`,
+            };
+          }
+        }
       }
-    }
 
-    const state = randomUUID();
-    const successRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
-      state,
-    )}`;
-    const failedRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
-      state,
-    )}&error=external_denied`;
-
-    const result = await this.providerService.createAuthorization({
-      processId: process.id,
-      state,
-      successRedirect,
-      failedRedirect,
-    });
-
-    // ClaveUnica only returns names/RUN/email; complete the challenge profile
-    // with the data collected at registration (user_identities), letting any
-    // per-process overrides win.
-    const identity = await this.identityService.getStatus(requestUser);
-    const identityOverrides: ExternalProfileOverrides = {};
-    if (identity.profile?.numeroDocumento) {
-      identityOverrides.numeroDocumento = identity.profile.numeroDocumento;
-    }
-    if (identity.profile?.fechaNacimiento) {
-      identityOverrides.fechaNacimiento = identity.profile.fechaNacimiento;
-    }
-    if (identity.profile?.estadoCivil) {
-      identityOverrides.estadoCivil = identity.profile.estadoCivil;
-    }
-    if (identity.profile?.telefono) {
-      identityOverrides.telefono = identity.profile.telefono;
-    }
-    // ClaveUnica users/info carries no email; without this override the
-    // challenge profile validation fails with "Missing fields: email".
-    identityOverrides.email = identity.profile?.email ?? requestUser.email;
-
-    process.externalAuthState = state;
-    process.providerContextEncrypted = this.sealedPayloadService.sealJson({
-      ...((result.providerContext ?? {}) as Record<string, unknown>),
-      externalProfileOverrides: {
-        ...identityOverrides,
-        ...(process.externalProfileOverrides ?? {}),
-      },
-    });
-    const fromStatus = process.status;
-    process.status = 'EXTERNAL_AUTH_PENDING';
-    await this.saveProcess(process);
-
-    await this.auditService.record({
-      processId: process.id,
-      actorUserId: requestUser.id,
-      actor: requestUser.email,
-      type: 'EXTERNAL_AUTH_STARTED',
-      message: 'Authorization with external identity provider started.',
-      fromStatus,
-      toStatus: process.status,
-      meta: {
+      const state = randomUUID();
+      const successRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
         state,
-        ...result.auditMeta,
-      },
-    });
+      )}`;
+      const failedRedirect = `${this.config.apiBaseUrl}/api/provider/clave-unica/callback?state=${encodeURIComponent(
+        state,
+      )}&error=external_denied`;
 
-    return { url: result.redirectUrl };
+      const result = await this.providerService.createAuthorization({
+        processId: process.id,
+        state,
+        successRedirect,
+        failedRedirect,
+      });
+
+      // ClaveUnica only returns names/RUN/email; complete the challenge profile
+      // with the data collected at registration (user_identities), letting any
+      // per-process overrides win.
+      const identity = await this.identityService.getStatus(requestUser);
+      const identityOverrides: ExternalProfileOverrides = {};
+      if (identity.profile?.numeroDocumento) {
+        identityOverrides.numeroDocumento = identity.profile.numeroDocumento;
+      }
+      if (identity.profile?.fechaNacimiento) {
+        identityOverrides.fechaNacimiento = identity.profile.fechaNacimiento;
+      }
+      if (identity.profile?.estadoCivil) {
+        identityOverrides.estadoCivil = identity.profile.estadoCivil;
+      }
+      if (identity.profile?.telefono) {
+        identityOverrides.telefono = identity.profile.telefono;
+      }
+      // ClaveUnica users/info carries no email; without this override the
+      // challenge profile validation fails with "Missing fields: email".
+      identityOverrides.email = identity.profile?.email ?? requestUser.email;
+
+      process.externalAuthState = state;
+      process.providerContextEncrypted = this.sealedPayloadService.sealJson({
+        ...((result.providerContext ?? {}) as Record<string, unknown>),
+        externalProfileOverrides: {
+          ...identityOverrides,
+          ...(process.externalProfileOverrides ?? {}),
+        },
+      });
+      const fromStatus = process.status;
+      process.status = 'EXTERNAL_AUTH_PENDING';
+      await this.saveProcess(process);
+
+      await this.auditService.record({
+        processId: process.id,
+        actorUserId: requestUser.id,
+        actor: requestUser.email,
+        type: 'EXTERNAL_AUTH_STARTED',
+        message: 'Authorization with external identity provider started.',
+        fromStatus,
+        toStatus: process.status,
+        meta: {
+          state,
+          ...result.auditMeta,
+        },
+      });
+
+      return { url: result.redirectUrl };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unable to start signing.';
+      await this.failProcess(process, message, requestUser.email);
+      throw error;
+    }
   }
 
   async getPaymentEligibility(
@@ -399,7 +410,18 @@ export class SigningService {
     const process = await this.getAccessibleProcess(requestUser, processId);
     await this.ensureNotExpired(process);
     const identity = await this.identityService.getStatus(requestUser);
-    const eligible = identity.canSign && process.status === 'CONFIGURED';
+    const availableCredits = await this.creditsService.getCurrentBalance(
+      requestUser.id,
+    );
+    const configured = process.status === 'CONFIGURED';
+    const eligible = identity.canSign && configured && availableCredits >= 1;
+    const reason: PaymentEligibilityResponse['reason'] = !identity.canSign
+      ? 'IDENTITY_REQUIRED'
+      : !configured
+        ? 'SIGN_OPTIONS_REQUIRED'
+        : availableCredits < 1
+          ? 'INSUFFICIENT_CREDITS'
+          : 'READY';
     const activeRegistration =
       eligible && this.config.signingProviderMode === 'live'
         ? await this.findActiveLiveRegistration(requestUser.id)
@@ -417,7 +439,8 @@ export class SigningService {
       mode: this.config.signingProviderMode,
       eligible,
       costCredits: 1,
-      availableCredits: eligible ? 1 : 0,
+      availableCredits,
+      reason,
       requiresExternalAuthorization:
         this.config.signingProviderMode === 'live' && !activeRegistration,
       message: eligible
@@ -426,7 +449,11 @@ export class SigningService {
           : activeRegistration
             ? 'Active certificate found. The document will be signed directly without repeating identity validation.'
             : 'Ready to start external provider authorization.'
-        : 'Complete identity validation and signature placement before signing.',
+        : reason === 'INSUFFICIENT_CREDITS'
+          ? 'Purchase signature credits before signing.'
+          : reason === 'IDENTITY_REQUIRED'
+            ? 'Complete identity validation before signing.'
+            : 'Configure signature placement before signing.',
     };
   }
 
@@ -456,16 +483,19 @@ export class SigningService {
     await this.identityService.ensureCanSign(requestUser.id);
     const payment = await this.getPaymentEligibility(requestUser, process.id);
     if (!payment.eligible) {
-      throw new BadRequestException(payment.message);
+      this.throwPaymentIneligibility(payment);
     }
 
-    const registration = await this.getOrCreateMockRegistration(requestUser.id);
-    const providerContext =
-      this.sealedPayloadService.openJson<ProviderContext>(
-        registration.providerContextEncrypted,
-      ) ?? {};
+    await this.creditsService.reserveForProcess(requestUser.id, process.id);
 
     try {
+      const registration = await this.getOrCreateMockRegistration(
+        requestUser.id,
+      );
+      const providerContext =
+        this.sealedPayloadService.openJson<ProviderContext>(
+          registration.providerContextEncrypted,
+        ) ?? {};
       const previousStatus = process.status;
       process.status = 'SIGNING';
       await this.saveProcess(process);
@@ -556,46 +586,55 @@ export class SigningService {
       return `${this.config.webBaseUrl}/sign/${process.id}/result`;
     }
 
-    const providerContext =
-      this.sealedPayloadService.openJson<ProviderContext>(
-        process.providerContextEncrypted,
-      ) ?? {};
-    const result = await this.providerService.completeAuthorization({
-      callbackCode: input.code,
-      providerContext,
-    });
+    try {
+      const providerContext =
+        this.sealedPayloadService.openJson<ProviderContext>(
+          process.providerContextEncrypted,
+        ) ?? {};
+      const result = await this.providerService.completeAuthorization({
+        callbackCode: input.code,
+        providerContext,
+      });
 
-    process.externalIdentity = result.identity;
-    process.providerContextEncrypted = this.sealedPayloadService.sealJson(
-      result.providerContext as Record<string, unknown>,
-    );
+      process.externalIdentity = result.identity;
+      process.providerContextEncrypted = this.sealedPayloadService.sealJson(
+        result.providerContext as Record<string, unknown>,
+      );
 
-    process.status = 'EXTERNAL_AUTH_DONE';
-    await this.saveProcess(process);
-    await this.auditService.record({
-      processId: process.id,
-      actor: 'system',
-      type: 'EXTERNAL_AUTH_COMPLETED',
-      message: 'External identity flow completed successfully.',
-      fromStatus: 'EXTERNAL_AUTH_PENDING',
-      toStatus: 'EXTERNAL_AUTH_DONE',
-      meta: result.auditMeta,
-    });
+      process.status = 'EXTERNAL_AUTH_DONE';
+      await this.saveProcess(process);
+      await this.auditService.record({
+        processId: process.id,
+        actor: 'system',
+        type: 'EXTERNAL_AUTH_COMPLETED',
+        message: 'External identity flow completed successfully.',
+        fromStatus: 'EXTERNAL_AUTH_PENDING',
+        toStatus: 'EXTERNAL_AUTH_DONE',
+        meta: result.auditMeta,
+      });
 
-    process.challenge = result.challenge;
-    process.status = 'CHALLENGE_PENDING';
-    await this.saveProcess(process);
-    await this.auditService.record({
-      processId: process.id,
-      actor: 'system',
-      type: 'CHALLENGE_READY',
-      message: 'Challenge questions are ready for the operator.',
-      fromStatus: 'EXTERNAL_AUTH_DONE',
-      toStatus: 'CHALLENGE_PENDING',
-      meta: { idChallenge: result.challenge.idChallenge },
-    });
+      process.challenge = result.challenge;
+      process.status = 'CHALLENGE_PENDING';
+      await this.saveProcess(process);
+      await this.auditService.record({
+        processId: process.id,
+        actor: 'system',
+        type: 'CHALLENGE_READY',
+        message: 'Challenge questions are ready for the operator.',
+        fromStatus: 'EXTERNAL_AUTH_DONE',
+        toStatus: 'CHALLENGE_PENDING',
+        meta: { idChallenge: result.challenge.idChallenge },
+      });
 
-    return `${this.config.webBaseUrl}/sign/${process.id}/challenge`;
+      return `${this.config.webBaseUrl}/sign/${process.id}/challenge`;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'External authorization could not be completed.';
+      await this.failProcess(process, message, 'system');
+      return `${this.config.webBaseUrl}/sign/${process.id}/result`;
+    }
   }
 
   async submitChallenge(
@@ -826,7 +865,7 @@ export class SigningService {
       throw new NotFoundException('Signing process not found.');
     }
 
-    if (requestUser.role !== 'admin' && process.userId !== requestUser.id) {
+    if (process.userId !== requestUser.id) {
       throw new NotFoundException('Signing process not found.');
     }
 
@@ -1021,21 +1060,6 @@ export class SigningService {
     return map[status];
   }
 
-  private async getOrCreateAccount(userId: string) {
-    const existing = await this.accountRepository.findOne({
-      where: { userId },
-    });
-    if (existing) {
-      return existing;
-    }
-    return this.accountRepository.save(
-      this.accountRepository.create({
-        userId,
-        currentBalance: 0,
-      }),
-    );
-  }
-
   private async upsertSignatureAsset(process: SigningProcessEntity) {
     const options = process.signOptions;
     if (!options.visible || !options.page) {
@@ -1161,6 +1185,12 @@ export class SigningService {
     process.status = 'EXPIRED';
     process.errorMessage = reason;
     await this.saveProcess(process);
+    if (previousStatus !== 'SIGNED') {
+      await this.creditsService.refundForProcess(
+        process.id,
+        'Devolución por expiración del proceso.',
+      );
+    }
     await this.fileStore.delete(process.originalStoragePath);
     await this.fileStore.delete(process.signedStoragePath);
     await this.fileStore.delete(process.signatureImageStoragePath);
@@ -1180,10 +1210,17 @@ export class SigningService {
     message: string,
     actor: string,
   ) {
+    if (process.status === 'SIGNED') {
+      return;
+    }
     const previousStatus = process.status;
     process.status = 'FAILED';
     process.errorMessage = message;
     await this.saveProcess(process);
+    await this.creditsService.refundForProcess(
+      process.id,
+      'Devolución por fallo del proceso de firma.',
+    );
     await this.auditService.record({
       processId: process.id,
       actor,
@@ -1192,5 +1229,17 @@ export class SigningService {
       fromStatus: previousStatus,
       toStatus: 'FAILED',
     });
+  }
+
+  private throwPaymentIneligibility(
+    payment: PaymentEligibilityResponse,
+  ): never {
+    if (payment.reason === 'INSUFFICIENT_CREDITS') {
+      throw new ConflictException({
+        code: 'INSUFFICIENT_CREDITS',
+        message: payment.message,
+      });
+    }
+    throw new BadRequestException(payment.message);
   }
 }

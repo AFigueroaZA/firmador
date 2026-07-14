@@ -6,7 +6,7 @@ export const POST: APIRoute = async ({ request }) => {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
 
-  const response = await fetch(apiUrl("/api/auth/login"), {
+  const response = await fetch(apiUrl(request, "/api/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -30,9 +30,12 @@ export const POST: APIRoute = async ({ request }) => {
       .map((cookie) => cookie.split(";")[0])
       .join("; ");
     if (cookieHeader) {
-      const enrollmentResponse = await fetch(apiUrl("/api/enrollment"), {
-        headers: { cookie: cookieHeader },
-      });
+      const enrollmentResponse = await fetch(
+        apiUrl(request, "/api/enrollment"),
+        {
+          headers: { cookie: cookieHeader },
+        },
+      );
       if (enrollmentResponse.ok) {
         const enrollment = (await enrollmentResponse.json()) as {
           status?: string;
@@ -52,4 +55,3 @@ export const POST: APIRoute = async ({ request }) => {
     headers,
   });
 };
-

@@ -3,7 +3,9 @@ import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from './audit/audit.module';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
+import { BalanceModule } from './balance/balance.module';
 import { loadAppConfig } from './config/app.config';
 import { validateConfig } from './config/env.validation';
 import { createTypeOrmOptions } from './database/typeorm.config';
@@ -34,7 +36,9 @@ import { SupabaseModule } from './supabase/supabase.module';
       useFactory: createTypeOrmOptions,
     }),
     SupabaseModule,
+    AdminModule,
     AuthModule,
+    BalanceModule,
     DocumentsModule,
     AuditModule,
     IdentityModule,
