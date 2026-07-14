@@ -1,43 +1,52 @@
 ---
 import Alert from "../components/ui/Alert.astro";
-import PageHeader from "../components/ui/PageHeader.astro";
 import AppLayout from "../layouts/AppLayout.astro";
 
 const error = Astro.url.searchParams.get("error");
 ---
 
-<AppLayout title="Firmador">
-  <section class="mx-auto grid max-w-5xl items-stretch gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-    <article class="panel animate-rise overflow-hidden px-7 py-9 sm:px-10 sm:py-12">
-      <PageHeader eyebrow="Firma electrónica avanzada" title="Firma tus documentos en línea, con validez legal en Chile." description="Sube tu PDF, valida tu identidad y descarga el documento firmado desde un flujo simple y seguro." />
-      <img class="mt-4 h-4 w-44" src="/assets/squiggle.svg" alt="" />
+<AppLayout title="Firmador" showLoginLink>
+  <section class="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-16">
+    <article class="landing-hero">
+      <h1 class="max-w-2xl text-4xl font-semibold leading-[1.08] tracking-[-0.035em] text-ink sm:text-5xl lg:text-[52px]">
+        Firma tus documentos<br />
+        <span class="relative inline-block">
+          en línea
+          <img class="absolute -bottom-2 left-0 h-4 w-full" src="/assets/squiggle.svg" alt="" />
+        </span>
+      </h1>
+      <p class="mt-7 max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+        Sube tu PDF, valida tu identidad con ClaveÚnica y descarga el documento firmado. Si ya completaste el registro, entra con tu correo y contraseña.
+      </p>
       <div class="mt-8 flex flex-wrap gap-3">
-        <a class="button-accent" href="/register">Crear cuenta con ClaveÚnica</a>
+        <a class="button-accent" href="/register">Registrarme con ClaveÚnica</a>
         <a class="button-secondary" href="/login">Ya tengo cuenta</a>
       </div>
-      <div class="mt-8 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
-        <p class="rounded-2xl bg-white/70 px-4 py-3">Identidad protegida</p>
-        <p class="rounded-2xl bg-white/70 px-4 py-3">Firma FEA</p>
-        <p class="rounded-2xl bg-white/70 px-4 py-3">PDF descargable</p>
+      <div class="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs font-medium text-ink-700">
+        <span class="rounded-full bg-white/55 px-3 py-2">Validez legal en Chile</span>
+        <span class="rounded-full bg-white/55 px-3 py-2">Identidad con ClaveÚnica</span>
+        <span class="rounded-full bg-white/55 px-3 py-2">Certificado FEA · 1 año</span>
       </div>
-      {error && <Alert class="mt-5" tone="danger">No se pudo completar el registro. Inténtalo nuevamente.</Alert>}
     </article>
 
     <article class="panel animate-rise px-7 py-9 sm:px-8">
-      <p class="text-xs font-semibold uppercase tracking-[0.14em] text-coral-700">Acceso seguro</p>
-      <h2 class="mt-2 text-2xl font-semibold tracking-tight text-ink">Entrar a Firmaliza</h2>
-      <p class="mt-2 text-sm text-slate-500">Continúa con tu correo y contraseña.</p>
+      <h2 class="text-2xl font-semibold tracking-tight text-ink">Entrar</h2>
+      <p class="mt-2 text-sm text-slate-500">Usa tu correo y contraseña para continuar.</p>
+      {error && <Alert class="mt-5" tone="danger">No se pudo iniciar sesión. Revisa tus datos e inténtalo nuevamente.</Alert>}
       <form action="/session/login" class="mt-6 space-y-4" method="post">
         <label class="block text-sm font-medium text-slate-700">
           Correo
-          <input class="field mt-2" autocomplete="email" name="email" type="email" required />
+          <input class="field mt-2" autocomplete="email" name="email" placeholder="nombre@correo.cl" type="email" required />
         </label>
         <label class="block text-sm font-medium text-slate-700">
           Contraseña
-          <input class="field mt-2" autocomplete="current-password" name="password" type="password" required />
+          <input class="field mt-2" autocomplete="current-password" name="password" placeholder="••••••••" type="password" required />
         </label>
         <button class="button-primary w-full" type="submit">Entrar</button>
       </form>
+      <p class="mt-5 text-center text-xs text-slate-400">
+        ¿Nuevo en Firmaliza? <a class="font-medium text-coral-700 hover:underline" href="/register">Comienza tu registro con ClaveÚnica</a>
+      </p>
     </article>
   </section>
 </AppLayout>

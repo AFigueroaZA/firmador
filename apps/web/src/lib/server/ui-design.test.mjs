@@ -46,7 +46,6 @@ test("shared visual components exist as server-rendered Astro primitives", async
 
 test("all product flows use the redesigned page hierarchy", async () => {
   const pages = [
-    "../../pages/index.astro",
     "../../pages/login.astro",
     "../../pages/register/complete.astro",
     "../../pages/enrollment/challenge.astro",
@@ -79,4 +78,26 @@ test("the PDF wizard keeps its API contract while exposing accessible redesigned
   assert.match(wizard, /className="button-accent/);
   assert.match(wizard, /formData\.set\("pdf", pdfFile\)/);
   assert.match(wizard, /\{ visible, page, x, y, width, height \}/);
+});
+
+test("the landing page keeps the hero open and the login form in a single panel", async () => {
+  const page = await read("../../pages/index.astro");
+  const layout = await read("../../layouts/AppLayout.astro");
+
+  assert.match(page, /class="landing-hero/);
+  assert.match(page, /showLoginLink/);
+  assert.match(page, /placeholder="nombre@correo\.cl"/);
+  assert.match(layout, /showLoginLink\?: boolean/);
+  assert.match(layout, />Ya tengo cuenta<\/a>/);
+});
+
+test("balance uses a real ink surface and the reference two-level composition", async () => {
+  const page = await read("../../pages/balance.astro");
+  const css = await read("../../styles/global.css");
+
+  assert.match(css, /\.panel-ink\s*\{[^}]*background:\s*var\(--gradient-ink\)/s);
+  assert.match(page, /class="balance-summary/);
+  assert.match(page, /class="balance-content/);
+  assert.match(page, /class="panel-ink/);
+  assert.doesNotMatch(page, /bg-\[var\(--gradient-ink\)\]/);
 });

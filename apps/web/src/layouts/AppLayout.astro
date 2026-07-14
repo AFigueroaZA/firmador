@@ -8,9 +8,10 @@ interface Props {
   user?: { fullName: string; role: string } | null;
   active?: "dashboard" | "identity" | "sign" | "history" | "balance";
   credits?: number;
+  showLoginLink?: boolean;
 }
 
-const { title, user = null, active, credits } = Astro.props as Props;
+const { title, user = null, active, credits, showLoginLink = false } = Astro.props as Props;
 const pathname = Astro.url.pathname;
 const activeSection = active ?? (
   pathname.startsWith("/identity") ? "identity" :
@@ -94,6 +95,9 @@ const navClass = (key: string) => key === activeSection
               </nav>
             </details>
           </>
+        )}
+        {!user && showLoginLink && (
+          <a class="button-secondary px-4 py-2" href="/login">Ya tengo cuenta</a>
         )}
       </div>
     </header>
