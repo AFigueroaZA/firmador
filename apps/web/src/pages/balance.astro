@@ -1,16 +1,16 @@
 ---
 import type { BalanceResponse, CreditMovementType } from "@firmador/shared";
 import AppLayout from "../layouts/AppLayout.astro";
-import { serverFetch } from "../lib/server/api";
+import LoadingSpinner from "../components/LoadingSpinner.astro";
+import { serverFetchJson } from "../lib/server/api";
 
 if (Astro.locals.user?.role !== "operator") {
   return Astro.redirect("/dashboard");
 }
+Astro.response.headers.set("Cache-Control", "private, no-store");
 
-const response = await serverFetch(Astro.request, "/api/balance");
-const balance = response.ok
-  ? ((await response.json()) as BalanceResponse)
-  : { currentBalance: 0, packs: [1, 5, 10] as const, movements: [] };
+const balanceResult = await serverFetchJson<BalanceResponse>(Astro.request, "/api/balance");
+const balance = balanceResult.data;
 const requestedNext = Astro.url.searchParams.get("next") ?? "";
 const next = requestedNext.startsWith("/sign/") && !requestedNext.startsWith("//")
   ? requestedNext
@@ -24,11 +24,18 @@ const movementLabels: Record<CreditMovementType, string> = {
 ---
 
 <AppLayout title="Saldo de firmas" user={Astro.locals.user}>
+  {balanceResult.error && (
+    <div class="mb-5 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800" role="alert">
+      <p class="font-semibold">No pudimos consultar tu saldo</p>
+      <p class="mt-1">La información no se reemplazó por cero para evitar mostrar un saldo incorrecto.</p>
+      <a class="button-secondary mt-3 px-4 py-2" href={Astro.url.pathname + Astro.url.search}>Reintentar</a>
+    </div>
+  )}
   <section class="grid gap-5 lg:grid-cols-[340px,minmax(0,1fr)]">
     <aside class="panel animate-rise px-6 py-6">
       <p class="text-sm font-medium text-slate-500">Firmas disponibles</p>
       <p class="mt-2 text-5xl font-semibold text-ink" id="current-balance">
-        {balance.currentBalance}
+        {balance ? balance.currentBalance : "—"}
       </p>
       <p class="mt-3 text-sm text-slate-600">
         Cada documento utiliza una firma. Si un proceso falla o expira, la firma se devuelve automáticamente.
@@ -47,20 +54,31 @@ const movementLabels: Record<CreditMovementType, string> = {
           </p>
         </div>
 
-        <div class="mt-5 grid gap-3 sm:grid-cols-3">
-          {balance.packs.map((credits) => (
+        {balance ? (
+          <div class="mt-5 grid gap-3 sm:grid-cols-3">
+            {balance.packs.map((credits) => (
             <button
               class="rounded-3xl border border-slate-200 bg-white px-5 py-5 text-left transition hover:border-accent hover:shadow-sm"
               data-purchase-credits={credits}
               type="button"
             >
-              <span class="block text-3xl font-semibold text-ink">{credits}</span>
-              <span class="mt-1 block text-sm text-slate-500">
-                {credits === 1 ? "firma" : "firmas"} · $0 CLP
+              <span data-action-idle>
+                <span class="block text-3xl font-semibold text-ink">{credits}</span>
+                <span class="mt-1 block text-sm text-slate-500">
+                  {credits === 1 ? "firma" : "firmas"} · $0 CLP
+                </span>
+              </span>
+              <span class="hidden min-h-14 items-center" data-action-loading>
+                <LoadingSpinner label="Agregando" size="sm" />
               </span>
             </button>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            Las compras estarán disponibles cuando se recupere la conexión con el saldo.
+          </p>
+        )}
         <div class="mt-4 hidden rounded-2xl px-4 py-3 text-sm" id="purchase-message"></div>
       </article>
 
@@ -70,7 +88,9 @@ const movementLabels: Record<CreditMovementType, string> = {
           <p class="mt-1 text-sm text-slate-500">Se muestran los 20 movimientos más recientes.</p>
         </div>
         <div class="divide-y divide-slate-100">
-          {balance.movements.length === 0 ? (
+          {!balance ? (
+            <p class="px-6 py-8 text-sm text-slate-500">Movimientos no disponibles temporalmente.</p>
+          ) : balance.movements.length === 0 ? (
             <p class="px-6 py-8 text-sm text-slate-500">Todavía no hay movimientos.</p>
           ) : (
             balance.movements.map((movement) => (
@@ -106,30 +126,49 @@ const movementLabels: Record<CreditMovementType, string> = {
         ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
         : "border border-rose-200 bg-rose-50 text-rose-700"}`;
     };
+    const setButtonsBusy = (activeButton, busy) => {
+      buttons.forEach((item) => {
+        item.disabled = busy;
+        const isActive = item === activeButton;
+        item.querySelector("[data-action-idle]")?.classList.toggle("hidden", busy && isActive);
+        const loading = item.querySelector("[data-action-loading]");
+        loading?.classList.toggle("hidden", !busy || !isActive);
+        loading?.classList.toggle("inline-flex", busy && isActive);
+      });
+    };
 
     buttons.forEach((button) => {
       button.addEventListener("click", async () => {
         const credits = Number(button.getAttribute("data-purchase-credits"));
         const operationId = button.getAttribute("data-operation-id") ?? crypto.randomUUID();
         button.setAttribute("data-operation-id", operationId);
-        buttons.forEach((item) => item.setAttribute("disabled", "true"));
-        const response = await fetch("/api/balance/purchases", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ operationId, credits }),
-        });
+        setButtonsBusy(button, true);
+        try {
+          const response = await fetch("/api/balance/purchases", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ operationId, credits }),
+          });
 
-        if (!response.ok) {
-          showMessage("No se pudo completar la compra simulada.", false);
-          buttons.forEach((item) => item.removeAttribute("disabled"));
-          return;
+          if (!response.ok) {
+            showMessage("No se pudo completar la compra simulada.", false);
+            setButtonsBusy(button, false);
+            return;
+          }
+
+          const result = await response.json();
+          const balanceNode = document.querySelector("#current-balance");
+          if (balanceNode) balanceNode.textContent = String(result.currentBalance);
+          showMessage(`Se agregaron ${credits} firma${credits === 1 ? "" : "s"} a tu saldo.`, true);
+          window.setTimeout(() => {
+            document.dispatchEvent(new CustomEvent("firmador:page-loading"));
+            window.location.reload();
+          }, 700);
+        } catch {
+          showMessage("No fue posible conectar con el servidor.", false);
+          setButtonsBusy(button, false);
         }
-
-        const result = await response.json();
-        const balanceNode = document.querySelector("#current-balance");
-        if (balanceNode) balanceNode.textContent = String(result.currentBalance);
-        showMessage(`Se agregaron ${credits} firma${credits === 1 ? "" : "s"} a tu saldo.`, true);
-        window.setTimeout(() => window.location.reload(), 700);
       });
     });
   </script>

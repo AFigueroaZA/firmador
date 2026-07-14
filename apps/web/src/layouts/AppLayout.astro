@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import PageLoadingOverlay from "../components/PageLoadingOverlay.astro";
 
 interface Props {
   title: string;
@@ -54,5 +55,6 @@ const { title, user = null } = Astro.props as Props;
         <slot />
       </main>
     </div>
+    <PageLoadingOverlay />
   </body>
 </html>

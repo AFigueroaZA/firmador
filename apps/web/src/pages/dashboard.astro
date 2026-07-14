@@ -8,7 +8,8 @@ import type {
 } from "@firmador/shared";
 import AppLayout from "../layouts/AppLayout.astro";
 import InfoCard from "../components/InfoCard.astro";
-import { serverFetch } from "../lib/server/api";
+import LoadingSpinner from "../components/LoadingSpinner.astro";
+import { serverFetchJson } from "../lib/server/api";
 
 interface HistoryResponse {
   items: Array<{ status: string }>;
@@ -18,12 +19,15 @@ const user = Astro.locals.user;
 if (!user) {
   return Astro.redirect("/login");
 }
+Astro.response.headers.set("Cache-Control", "private, no-store");
 
 let adminDashboard: AdminDashboardResponse | null = null;
 let adminUsers: AdminUsersResponse | null = null;
+let adminLoadError: string | null = null;
 let history: HistoryResponse = { items: [] };
 let identity: IdentityStatusResponse | null = null;
 let balance: BalanceResponse | null = null;
+let operatorBalanceError: string | null = null;
 
 const filters = new URLSearchParams();
 for (const key of ["page", "q", "isActive", "identityStatus"]) {
@@ -32,30 +36,27 @@ for (const key of ["page", "q", "isActive", "identityStatus"]) {
 }
 
 if (user.role === "admin") {
-  const [dashboardResponse, usersResponse] = await Promise.all([
-    serverFetch(Astro.request, "/api/admin/dashboard"),
-    serverFetch(Astro.request, `/api/admin/users?${filters.toString()}`),
+  const [dashboardResult, usersResult] = await Promise.all([
+    serverFetchJson<AdminDashboardResponse>(Astro.request, "/api/admin/dashboard"),
+    serverFetchJson<AdminUsersResponse>(Astro.request, `/api/admin/users?${filters.toString()}`),
   ]);
-  adminDashboard = dashboardResponse.ok
-    ? ((await dashboardResponse.json()) as AdminDashboardResponse)
-    : null;
-  adminUsers = usersResponse.ok
-    ? ((await usersResponse.json()) as AdminUsersResponse)
+  adminDashboard = dashboardResult.data;
+  adminUsers = usersResult.data;
+  const errors = [dashboardResult.error, usersResult.error].filter(Boolean);
+  adminLoadError = errors.length > 0
+    ? "No pudimos cargar toda la información administrativa. Intenta nuevamente."
     : null;
 } else {
-  const [historyResponse, identityResponse, balanceResponse] = await Promise.all([
-    serverFetch(Astro.request, "/api/history"),
-    serverFetch(Astro.request, "/api/identity/me"),
-    serverFetch(Astro.request, "/api/balance"),
+  const [historyResult, identityResult, balanceResult] = await Promise.all([
+    serverFetchJson<HistoryResponse>(Astro.request, "/api/history"),
+    serverFetchJson<IdentityStatusResponse>(Astro.request, "/api/identity/me"),
+    serverFetchJson<BalanceResponse>(Astro.request, "/api/balance"),
   ]);
-  history = historyResponse.ok
-    ? ((await historyResponse.json()) as HistoryResponse)
-    : { items: [] };
-  identity = identityResponse.ok
-    ? ((await identityResponse.json()) as IdentityStatusResponse)
-    : null;
-  balance = balanceResponse.ok
-    ? ((await balanceResponse.json()) as BalanceResponse)
+  history = historyResult.data ?? { items: [] };
+  identity = identityResult.data;
+  balance = balanceResult.data;
+  operatorBalanceError = balanceResult.error
+    ? "No pudimos consultar tu saldo actual. Recarga la página para intentarlo nuevamente."
     : null;
 }
 
@@ -88,11 +89,18 @@ const pageHref = (page: number) => {
 <AppLayout title={user.role === "admin" ? "Administración" : "Dashboard operativo"} user={user}>
   {user.role === "admin" ? (
     <div class="space-y-6">
+      {adminLoadError && (
+        <div class="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800" role="alert">
+          <p class="font-semibold">No fue posible cargar el panel</p>
+          <p class="mt-1">{adminLoadError}</p>
+          <a class="button-secondary mt-3 px-4 py-2" href={Astro.url.pathname + Astro.url.search}>Reintentar</a>
+        </div>
+      )}
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <InfoCard title="Usuarios" value={String(adminDashboard?.users.total ?? 0)} subtitle={`${adminDashboard?.users.active ?? 0} activos · ${adminDashboard?.users.inactive ?? 0} inactivos`} />
-        <InfoCard title="Identidad lista" value={String(adminDashboard?.identities.ready ?? 0)} subtitle={`${adminDashboard?.identities.pending ?? 0} pendientes · ${adminDashboard?.identities.failed ?? 0} fallidas`} />
-        <InfoCard title="Firmas disponibles" value={String(adminDashboard?.totalAvailableCredits ?? 0)} subtitle="Saldo total de usuarios" />
-        <InfoCard title="Firmas completadas" value={String(adminDashboard?.signing.signed ?? 0)} subtitle={`${adminDashboard?.signing.inProgress ?? 0} procesos en curso`} />
+        <InfoCard title="Usuarios" value={adminDashboard ? String(adminDashboard.users.total) : "—"} subtitle={adminDashboard ? `${adminDashboard.users.active} activos · ${adminDashboard.users.inactive} inactivos` : "Información no disponible"} />
+        <InfoCard title="Identidad lista" value={adminDashboard ? String(adminDashboard.identities.ready) : "—"} subtitle={adminDashboard ? `${adminDashboard.identities.pending} pendientes · ${adminDashboard.identities.failed} fallidas` : "Información no disponible"} />
+        <InfoCard title="Firmas disponibles" value={adminDashboard ? String(adminDashboard.totalAvailableCredits) : "—"} subtitle="Saldo total de usuarios" />
+        <InfoCard title="Firmas completadas" value={adminDashboard ? String(adminDashboard.signing.signed) : "—"} subtitle={adminDashboard ? `${adminDashboard.signing.inProgress} procesos en curso` : "Información no disponible"} />
       </section>
 
       <section class="panel animate-rise px-6 py-5">
@@ -148,7 +156,9 @@ const pageHref = (page: number) => {
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              {(adminUsers?.items.length ?? 0) === 0 ? (
+              {!adminUsers ? (
+                <tr><td class="px-6 py-8 text-rose-700" colspan="6">No fue posible consultar los usuarios. Usa “Reintentar” para volver a cargar.</td></tr>
+              ) : adminUsers.items.length === 0 ? (
                 <tr><td class="px-6 py-8 text-slate-500" colspan="6">No hay usuarios para estos filtros.</td></tr>
               ) : adminUsers?.items.map((item) => (
                 <tr>
@@ -162,7 +172,7 @@ const pageHref = (page: number) => {
                     </span>
                   </td>
                   <td class="px-4 py-4 text-slate-600">{identityLabels[item.identityStatus]}</td>
-                  <td class="px-4 py-4 font-semibold text-ink">{item.currentBalance}</td>
+                  <td class="px-4 py-4 font-semibold text-ink" data-balance-id={item.id}>{item.currentBalance}</td>
                   <td class="px-4 py-4 text-xs text-slate-500">
                     <p>{item.lastLoginAt ? `Acceso ${new Date(item.lastLoginAt).toLocaleString("es-CL")}` : "Sin accesos"}</p>
                     <p class="mt-1">Alta {new Date(item.createdAt).toLocaleDateString("es-CL")}</p>
@@ -171,7 +181,8 @@ const pageHref = (page: number) => {
                     <div class="flex justify-end gap-2">
                       <button class="button-secondary px-3 py-2" data-adjust-id={item.id} data-adjust-name={item.fullName} type="button">Ajustar</button>
                       <button class="button-secondary px-3 py-2" data-status-id={item.id} data-next-status={String(!item.isActive)} type="button">
-                        {item.isActive ? "Desactivar" : "Activar"}
+                        <span data-action-idle>{item.isActive ? "Desactivar" : "Activar"}</span>
+                        <span class="hidden" data-action-loading><LoadingSpinner label="Guardando" size="sm" /></span>
                       </button>
                     </div>
                   </td>
@@ -193,7 +204,7 @@ const pageHref = (page: number) => {
       </section>
 
       <dialog class="w-[min(92vw,520px)] rounded-3xl p-0 shadow-2xl backdrop:bg-slate-900/30" id="adjust-dialog">
-        <form class="p-6" id="adjust-form">
+        <form class="p-6" id="adjust-form" data-no-page-loader="true">
           <div class="flex items-start justify-between gap-4">
             <div>
               <h2 class="text-lg font-semibold text-ink">Ajustar saldo</h2>
@@ -211,14 +222,22 @@ const pageHref = (page: number) => {
             <textarea class="field mt-2 min-h-24" id="adjust-reason" minlength="3" maxlength="250" required></textarea>
           </label>
           <p class="mt-4 hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="admin-action-error"></p>
-          <button class="button-primary mt-5 w-full" type="submit">Guardar ajuste</button>
+          <button class="button-primary mt-5 w-full" type="submit">
+            <span data-action-idle>Guardar ajuste</span>
+            <span class="hidden" data-action-loading><LoadingSpinner label="Guardando" size="sm" /></span>
+          </button>
         </form>
       </dialog>
     </div>
   ) : (
     <>
+      {operatorBalanceError && (
+        <div class="mb-5 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800" role="alert">
+          {operatorBalanceError}
+        </div>
+      )}
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <InfoCard title="Firmas disponibles" value={String(balance?.currentBalance ?? 0)} subtitle="Saldo listo para usar" />
+        <InfoCard title="Firmas disponibles" value={balance ? String(balance.currentBalance) : "—"} subtitle={balance ? "Saldo listo para usar" : "Información no disponible"} />
         <InfoCard title="Procesos totales" value={String(total)} subtitle="Tu historial de firmas" />
         <InfoCard title="Firmas exitosas" value={String(signed)} subtitle="Documentos listos para descarga" />
         <InfoCard title="En curso" value={String(pending)} subtitle="Procesos pendientes" />
@@ -265,6 +284,12 @@ const pageHref = (page: number) => {
         errorBox.textContent = message;
         errorBox.classList.remove("hidden");
       };
+      const setBusy = (button, busy) => {
+        if (!(button instanceof HTMLButtonElement)) return;
+        button.disabled = busy;
+        button.querySelector("[data-action-idle]")?.classList.toggle("hidden", busy);
+        button.querySelector("[data-action-loading]")?.classList.toggle("hidden", !busy);
+      };
 
       document.querySelectorAll("[data-adjust-id]").forEach((button) => {
         button.addEventListener("click", () => {
@@ -279,39 +304,61 @@ const pageHref = (page: number) => {
 
       document.querySelector("#adjust-form")?.addEventListener("submit", async (event) => {
         event.preventDefault();
+        const submitButton = event.currentTarget.querySelector('button[type="submit"]');
         const userId = document.querySelector("#adjust-user-id").value;
         const quantity = Number(document.querySelector("#adjust-quantity").value);
         const reason = document.querySelector("#adjust-reason").value;
         const operationId = event.currentTarget.getAttribute("data-operation-id") ?? crypto.randomUUID();
-        const response = await fetch(`/api/admin/users/${userId}/balance-adjustments`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ operationId, quantity, reason }),
-        });
-        if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          showError(payload?.message ?? "No se pudo ajustar el saldo.");
-          return;
+        errorBox?.classList.add("hidden");
+        setBusy(submitButton, true);
+        try {
+          const response = await fetch(`/api/admin/users/${userId}/balance-adjustments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+            body: JSON.stringify({ operationId, quantity, reason }),
+          });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            showError(payload?.message ?? "No se pudo ajustar el saldo.");
+            setBusy(submitButton, false);
+            return;
+          }
+          const result = await response.json();
+          const balanceNode = document.querySelector(`[data-balance-id="${userId}"]`);
+          if (balanceNode) balanceNode.textContent = String(result.currentBalance);
+          dialog?.close();
+          document.dispatchEvent(new CustomEvent("firmador:page-loading"));
+          window.location.reload();
+        } catch {
+          showError("No fue posible conectar con el servidor.");
+          setBusy(submitButton, false);
         }
-        window.location.reload();
       });
 
       document.querySelectorAll("[data-status-id]").forEach((button) => {
         button.addEventListener("click", async () => {
-          button.setAttribute("disabled", "true");
+          setBusy(button, true);
           const userId = button.getAttribute("data-status-id");
           const isActive = button.getAttribute("data-next-status") === "true";
-          const response = await fetch(`/api/admin/users/${userId}/status`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ isActive }),
-          });
-          if (!response.ok) {
-            button.removeAttribute("disabled");
-            window.alert("No se pudo actualizar la cuenta.");
-            return;
+          try {
+            const response = await fetch(`/api/admin/users/${userId}/status`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              cache: "no-store",
+              body: JSON.stringify({ isActive }),
+            });
+            if (!response.ok) {
+              setBusy(button, false);
+              window.alert("No se pudo actualizar la cuenta.");
+              return;
+            }
+            document.dispatchEvent(new CustomEvent("firmador:page-loading"));
+            window.location.reload();
+          } catch {
+            setBusy(button, false);
+            window.alert("No fue posible conectar con el servidor.");
           }
-          window.location.reload();
         });
       });
     </script>

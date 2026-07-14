@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Post, UseGuards } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,6 +14,7 @@ export class BalanceController {
   constructor(private readonly creditsService: CreditsService) {}
 
   @Get()
+  @Header('Cache-Control', 'private, no-store')
   getBalance(@CurrentUser() requestUser: RequestUser) {
     return this.creditsService.getOverview(requestUser.id);
   }

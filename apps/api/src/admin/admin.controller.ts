@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
@@ -24,11 +25,13 @@ export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
   @Get('dashboard')
+  @Header('Cache-Control', 'private, no-store')
   getDashboard() {
     return this.adminService.getDashboard();
   }
 
   @Get('users')
+  @Header('Cache-Control', 'private, no-store')
   listUsers(
     @Query('page') page?: string,
     @Query('q') q?: string,

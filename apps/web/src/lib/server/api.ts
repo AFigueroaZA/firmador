@@ -8,7 +8,11 @@ const API_BASE_URL =
 
 export const apiUrl = (path: string) => new URL(path, API_BASE_URL).toString();
 
-export const serverFetch = (request: Request, path: string, init?: RequestInit) => {
+export const serverFetch = (
+  request: Request,
+  path: string,
+  init?: RequestInit,
+) => {
   const headers = new Headers(init?.headers);
   const cookie = request.headers.get("cookie");
   if (cookie) {
@@ -17,11 +21,47 @@ export const serverFetch = (request: Request, path: string, init?: RequestInit) 
 
   return fetch(apiUrl(path), {
     ...init,
+    cache: init?.cache ?? "no-store",
     headers,
   });
 };
 
-export const getSession = async (request: Request): Promise<AuthSession | null> => {
+export type ServerJsonResult<T> =
+  | { data: T; error: null; status: number }
+  | { data: null; error: string; status: number | null };
+
+export const serverFetchJson = async <T>(
+  request: Request,
+  path: string,
+  init?: RequestInit,
+): Promise<ServerJsonResult<T>> => {
+  try {
+    const response = await serverFetch(request, path, init);
+    if (!response.ok) {
+      return {
+        data: null,
+        error: `La API respondió con estado ${response.status}.`,
+        status: response.status,
+      };
+    }
+
+    return {
+      data: (await response.json()) as T,
+      error: null,
+      status: response.status,
+    };
+  } catch {
+    return {
+      data: null,
+      error: "No fue posible conectar con la API.",
+      status: null,
+    };
+  }
+};
+
+export const getSession = async (
+  request: Request,
+): Promise<AuthSession | null> => {
   const cookie = request.headers.get("cookie") ?? "";
   if (!cookie.includes("firmador_access=")) {
     return null;
@@ -48,8 +88,10 @@ export const proxyApiResponse = async (
 ) => {
   const response = await serverFetch(context.request, path, init);
   const body = await response.arrayBuffer();
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "private, no-store");
   return new Response(body, {
     status: response.status,
-    headers: response.headers,
+    headers,
   });
 };
