@@ -4,6 +4,7 @@ import type {
   SigningProcessDetail,
 } from "@firmador/shared";
 import AppLayout from "../../../layouts/AppLayout.astro";
+import PageHeader from "../../../components/ui/PageHeader.astro";
 import { serverFetch } from "../../../lib/server/api";
 
 const { processId } = Astro.params;
@@ -30,6 +31,7 @@ const payment = paymentResponse.ok
 
 <AppLayout title="Confirmar firma" user={Astro.locals.user}>
   <section class="mx-auto max-w-3xl space-y-5">
+    <PageHeader eyebrow="Paso 2 de 4" title="Confirma la firma" description="Revisa el documento y el uso de saldo antes de continuar." />
     <article class="panel animate-rise px-6 py-6">
       <h2 class="text-lg font-semibold text-ink">Confirmar firma</h2>
       <p class="mt-2 text-sm text-slate-600">
@@ -72,7 +74,7 @@ const payment = paymentResponse.ok
       )}
 
       <div class="mt-6 flex flex-wrap gap-3">
-        <button class="button-primary" disabled={!payment?.eligible} id="start-signing-button" type="button">
+        <button class="button-accent" disabled={!payment?.eligible} id="start-signing-button" type="button">
           {payment?.mode === "live"
             ? payment?.requiresExternalAuthorization
               ? "Autorizar firma"

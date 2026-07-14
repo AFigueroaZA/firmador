@@ -1,6 +1,8 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
 import StatusBadge from "../components/StatusBadge.astro";
+import EmptyState from "../components/ui/EmptyState.astro";
+import PageHeader from "../components/ui/PageHeader.astro";
 import type { SigningProcessSummary } from "@firmador/shared";
 import { serverFetch } from "../lib/server/api";
 
@@ -11,6 +13,9 @@ const history = response.ok
 ---
 
 <AppLayout title="Historial de firmas" user={Astro.locals.user}>
+  <PageHeader class="mb-7" eyebrow="Documentos" title="Historial de firmas" description="Consulta el estado de tus procesos y descarga los documentos firmados.">
+    <a class="button-accent" href="/sign/new" slot="actions">Firmar un PDF</a>
+  </PageHeader>
   <section class="panel animate-rise overflow-hidden">
     <div class="border-b border-slate-100 px-6 py-5">
       <h2 class="text-lg font-semibold text-ink">Procesos recientes</h2>
@@ -19,7 +24,7 @@ const history = response.ok
 
     <div class="divide-y divide-slate-100">
       {history.items.length === 0 ? (
-        <div class="px-6 py-8 text-sm text-slate-500">Todavía no hay procesos registrados.</div>
+        <EmptyState title="Todavía no hay procesos" description="Cuando firmes tu primer PDF, podrás seguirlo y descargarlo desde aquí."><a class="button-primary" href="/sign/new">Firmar mi primer PDF</a></EmptyState>
       ) : (
         history.items.map((item) => (
           <article class="flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">

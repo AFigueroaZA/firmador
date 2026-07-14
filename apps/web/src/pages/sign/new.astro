@@ -2,6 +2,7 @@
 import type { IdentityStatusResponse } from "@firmador/shared";
 import AppLayout from "../../layouts/AppLayout.astro";
 import { SignWizard } from "../../components/islands/SignWizard";
+import PageHeader from "../../components/ui/PageHeader.astro";
 import { serverFetch } from "../../lib/server/api";
 
 const identityResponse = await serverFetch(Astro.request, "/api/identity/me");
@@ -17,6 +18,7 @@ if (!identity.canSign) {
 
 <AppLayout title="Nuevo proceso de firma" user={Astro.locals.user}>
   <section class="space-y-4">
+    <PageHeader eyebrow="Nuevo proceso" title="Firmar un PDF" description="Sube el documento, elige si la firma será visible y ubícala sobre la página antes de confirmar." />
     <div class="panel animate-rise px-6 py-5">
       <h2 class="text-lg font-semibold text-ink">Carga y configuracion</h2>
       <p class="mt-2 text-sm text-slate-600">

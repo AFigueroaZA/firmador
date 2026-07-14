@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, PointerEvent } from "react";
+import { Eye, FileImage, FileText, PenLine } from "lucide-react";
 import {
   GlobalWorkerOptions,
   getDocument,
@@ -275,10 +276,10 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
       className="grid gap-6 lg:grid-cols-[360px,minmax(0,1fr)]"
       onSubmit={handleSubmit}
     >
-      <section className="panel animate-rise space-y-4 px-5 py-5">
+      <section className="panel animate-rise space-y-5 px-5 py-5 sm:px-6 sm:py-6">
         <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Archivo PDF
+          <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <FileText aria-hidden="true" className="text-coral-600" size={17} /> Archivo PDF
           </label>
           <input
             className="field"
@@ -288,8 +289,8 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold text-slate-700">
-            Imagen de firma (opcional)
+          <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <FileImage aria-hidden="true" className="text-coral-600" size={17} /> Imagen de firma (opcional)
           </label>
           <input
             className="field"
@@ -300,7 +301,7 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
         </div>
 
         <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
-          Firma visible
+          <span className="flex items-center gap-2"><Eye aria-hidden="true" size={17} /> Firma visible</span>
           <input
             checked={visible}
             type="checkbox"
@@ -385,15 +386,16 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
         )}
 
         <button
-          className="button-primary w-full"
+            className="button-accent w-full"
           disabled={isSubmitting}
           type="submit"
         >
-          {isSubmitting ? "Preparando firma..." : "Continuar a pago demo"}
+              <PenLine aria-hidden="true" size={17} />
+              {isSubmitting ? "Preparando firma..." : "Continuar a confirmar"}
         </button>
       </section>
 
-      <section className="panel animate-rise px-5 py-5">
+          <section className="panel animate-rise px-5 py-5 sm:px-6 sm:py-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-ink">Previsualizacion</h3>
@@ -410,14 +412,17 @@ export function SignWizard({ createEndpoint }: SignWizardProps) {
         <div className="overflow-auto rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-4">
           <div className="mx-auto w-fit">
             <div className="relative inline-block">
-              <canvas
-                className="block cursor-crosshair rounded-2xl bg-white shadow-panel"
+                  <canvas
+                    aria-label="Vista previa del PDF"
+                    className="block cursor-crosshair rounded-2xl bg-white shadow-panel"
                 onClick={handleCanvasClick}
                 ref={canvasRef}
               />
               {visible && viewportHeight > 0 && (
                 <div
-                  className="absolute cursor-move touch-none border-2 border-accent/70 bg-accent/10"
+                      aria-label="Ubicación de la firma visible"
+                      className="absolute cursor-move touch-none rounded-lg border-2 border-coral/80 bg-coral/10 shadow-glow"
+                      role="img"
                   onPointerDown={handleOverlayPointerDown}
                   onPointerMove={handleOverlayPointerMove}
                   onPointerUp={handleOverlayPointerUp}

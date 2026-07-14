@@ -1,0 +1,13 @@
+---
+interface Props {
+  as?: "section" | "article" | "aside" | "div";
+  solid?: boolean;
+  class?: string;
+}
+
+const { as: Tag = "section", solid = false, class: className = "" } = Astro.props as Props;
+---
+
+<Tag class:list={[solid ? "panel-solid" : "panel", "animate-rise", className]}>
+  <slot />
+</Tag>

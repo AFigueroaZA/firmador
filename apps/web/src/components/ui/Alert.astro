@@ -1,0 +1,14 @@
+---
+interface Props {
+  tone?: "danger" | "success" | "info" | "warning";
+  title?: string;
+  class?: string;
+}
+
+const { tone = "info", title, class: className = "" } = Astro.props;
+---
+
+<div class:list={["alert", `alert-${tone}`, className]} role={tone === "danger" ? "alert" : "status"}>
+  {title && <p class="font-semibold">{title}</p>}
+  <div class:list={[title && "mt-1"]}><slot /></div>
+</div>

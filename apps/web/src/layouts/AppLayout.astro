@@ -1,13 +1,33 @@
 ---
-import "../styles/global.css";
+import { Coins, LogOut, Menu } from "lucide-react";
 import PageLoadingOverlay from "../components/PageLoadingOverlay.astro";
+import "../styles/global.css";
 
 interface Props {
   title: string;
   user?: { fullName: string; role: string } | null;
+  active?: "dashboard" | "identity" | "sign" | "history" | "balance";
+  credits?: number;
 }
 
-const { title, user = null } = Astro.props as Props;
+const { title, user = null, active, credits } = Astro.props as Props;
+const pathname = Astro.url.pathname;
+const activeSection = active ?? (
+  pathname.startsWith("/identity") ? "identity" :
+  pathname.startsWith("/sign") ? "sign" :
+  pathname.startsWith("/history") ? "history" :
+  pathname.startsWith("/balance") ? "balance" : "dashboard"
+);
+const operatorLinks = [
+  { key: "dashboard", label: "Dashboard", href: "/dashboard" },
+  { key: "identity", label: "Identidad", href: "/identity" },
+  { key: "sign", label: "Firmar PDF", href: "/sign/new" },
+  { key: "history", label: "Historial", href: "/history" },
+] as const;
+const links = user?.role === "operator" ? operatorLinks : operatorLinks.slice(0, 1);
+const navClass = (key: string) => key === activeSection
+  ? "bg-ink text-white shadow-sm"
+  : "text-slate-600 hover:bg-slate-100 hover:text-ink";
 ---
 
 <!doctype html>
@@ -15,46 +35,71 @@ const { title, user = null } = Astro.props as Props;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{title}</title>
+    <meta name="theme-color" content="#003443" />
+    <title>{title} · Firmaliza</title>
   </head>
   <body>
-    <div class="mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
-      <header class="panel animate-rise mb-6 flex flex-col gap-4 px-6 py-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-            Firmador
-          </p>
-          <h1 class="text-2xl font-semibold text-ink">{title}</h1>
-        </div>
+    <header class="sticky top-0 z-50 border-b border-white/70 bg-white/75 shadow-sm backdrop-blur-xl">
+      <div class="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <a class="inline-flex items-center gap-2.5 text-ink" href={user ? "/dashboard" : "/"} aria-label="Ir al inicio de Firmaliza">
+          <img class="h-9 w-auto" src="/assets/firmaliza-logo.png" alt="" />
+          <span class="text-xl font-bold tracking-tight">Firmaliza</span>
+        </a>
+
         {user && (
-          <div class="flex items-center gap-3">
-            <nav class="flex flex-wrap items-center gap-2 text-sm font-medium text-slate-600">
-              <a class="rounded-full px-3 py-2 hover:bg-slate-100" href="/dashboard">Dashboard</a>
-              {user.role === "operator" && (
-                <>
-                  <a class="rounded-full px-3 py-2 hover:bg-slate-100" href="/identity">Identidad</a>
-                  <a class="rounded-full px-3 py-2 hover:bg-slate-100" href="/sign/new">Firmar PDF</a>
-                  <a class="rounded-full px-3 py-2 hover:bg-slate-100" href="/history">Historial</a>
-                  <a class="rounded-full px-3 py-2 hover:bg-slate-100" href="/balance">Saldo</a>
-                </>
-              )}
+          <>
+            <nav class="hidden items-center gap-1 lg:flex" aria-label="Navegación principal">
+              {links.map((item) => (
+                <a class:list={["rounded-full px-3.5 py-2 text-sm font-medium transition", navClass(item.key)]} href={item.href} aria-current={item.key === activeSection ? "page" : undefined}>
+                  {item.label}
+                </a>
+              ))}
             </nav>
-            <div class="hidden rounded-2xl bg-slate-100 px-4 py-2 text-sm text-slate-700 sm:block">
-              <div>{user.fullName}</div>
-              <div class="text-xs uppercase tracking-[0.2em] text-slate-500">
-                {user.role}
+
+            <div class="hidden items-center gap-3 sm:flex">
+              {user.role === "operator" && (
+                <a class="badge border border-coral-100 bg-coral-50 text-coral-700 hover:bg-coral-100" href="/balance" aria-label={credits === undefined ? "Ver saldo" : `Ver saldo: ${credits} créditos`}>
+                  <Coins size={15} aria-hidden="true" />
+                  {credits === undefined ? "Saldo" : `${credits} créditos`}
+                </a>
+              )}
+              <div class="hidden text-right xl:block">
+                <p class="max-w-40 truncate text-sm font-semibold text-ink">{user.fullName}</p>
+                <p class="font-mono text-[10px] uppercase tracking-[0.12em] text-slate-500">{user.role}</p>
               </div>
+              <form action="/session/logout" method="post">
+                <button class="button-secondary px-3 py-2" type="submit">
+                  <LogOut size={16} aria-hidden="true" />
+                  <span class="hidden xl:inline">Salir</span>
+                </button>
+              </form>
             </div>
-            <form action="/session/logout" method="post">
-              <button class="button-secondary" type="submit">Salir</button>
-            </form>
-          </div>
+
+            <details class="relative lg:hidden">
+              <summary class="button-secondary list-none px-3 py-2 [&::-webkit-details-marker]:hidden" aria-label="Abrir navegación">
+                <Menu size={20} aria-hidden="true" />
+              </summary>
+              <nav class="panel-solid absolute right-0 top-12 w-64 space-y-1 p-3" aria-label="Navegación principal">
+                {links.map((item) => (
+                  <a class:list={["block rounded-xl px-3 py-2.5 text-sm font-medium", navClass(item.key)]} href={item.href}>{item.label}</a>
+                ))}
+                {user.role === "operator" && <a class="block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100" href="/balance">{credits === undefined ? "Saldo" : `Saldo · ${credits} créditos`}</a>}
+                <div class="border-t border-slate-100 px-3 pt-3">
+                  <p class="truncate text-sm font-semibold text-ink">{user.fullName}</p>
+                  <p class="font-mono text-[10px] uppercase tracking-wider text-slate-500">{user.role}</p>
+                </div>
+                <form class="sm:hidden" action="/session/logout" method="post">
+                  <button class="button-secondary mt-2 w-full px-3 py-2" type="submit"><LogOut size={16} /> Salir</button>
+                </form>
+              </nav>
+            </details>
+          </>
         )}
-      </header>
-      <main class="flex-1">
-        <slot />
-      </main>
-    </div>
+      </div>
+    </header>
+    <main class="mx-auto min-h-[calc(100vh-68px)] w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+      <slot />
+    </main>
     <PageLoadingOverlay />
   </body>
 </html>
