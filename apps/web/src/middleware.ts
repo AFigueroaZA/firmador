@@ -12,6 +12,7 @@ const protectedPrefixes = [
   "/dashboard",
   "/history",
   "/identity",
+  "/balance",
   "/sign",
   "/enrollment",
 ];
@@ -57,6 +58,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (isProtected && !session) {
     return Response.redirect(new URL("/login", context.url), 302);
+  }
+
+  const operatorOnlyPrefixes = [
+    "/history",
+    "/identity",
+    "/balance",
+    "/sign",
+    "/enrollment",
+  ];
+  const isOperatorOnly = operatorOnlyPrefixes.some((prefix) =>
+    pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+  if (session?.user.role === "admin" && isOperatorOnly) {
+    return Response.redirect(new URL("/dashboard", context.url), 302);
   }
 
   return next();

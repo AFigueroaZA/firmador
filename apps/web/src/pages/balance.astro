@@ -1,0 +1,136 @@
+---
+import type { BalanceResponse, CreditMovementType } from "@firmador/shared";
+import AppLayout from "../layouts/AppLayout.astro";
+import { serverFetch } from "../lib/server/api";
+
+if (Astro.locals.user?.role !== "operator") {
+  return Astro.redirect("/dashboard");
+}
+
+const response = await serverFetch(Astro.request, "/api/balance");
+const balance = response.ok
+  ? ((await response.json()) as BalanceResponse)
+  : { currentBalance: 0, packs: [1, 5, 10] as const, movements: [] };
+const requestedNext = Astro.url.searchParams.get("next") ?? "";
+const next = requestedNext.startsWith("/sign/") && !requestedNext.startsWith("//")
+  ? requestedNext
+  : null;
+const movementLabels: Record<CreditMovementType, string> = {
+  CHARGE: "Compra simulada",
+  CONSUMPTION: "Firma reservada",
+  REFUND: "Devolución",
+  ADJUSTMENT: "Ajuste de saldo",
+};
+---
+
+<AppLayout title="Saldo de firmas" user={Astro.locals.user}>
+  <section class="grid gap-5 lg:grid-cols-[340px,minmax(0,1fr)]">
+    <aside class="panel animate-rise px-6 py-6">
+      <p class="text-sm font-medium text-slate-500">Firmas disponibles</p>
+      <p class="mt-2 text-5xl font-semibold text-ink" id="current-balance">
+        {balance.currentBalance}
+      </p>
+      <p class="mt-3 text-sm text-slate-600">
+        Cada documento utiliza una firma. Si un proceso falla o expira, la firma se devuelve automáticamente.
+      </p>
+      {next && (
+        <a class="button-secondary mt-5 w-full" href={next}>Volver a la firma</a>
+      )}
+    </aside>
+
+    <div class="space-y-5">
+      <article class="panel animate-rise px-6 py-6">
+        <div>
+          <h2 class="text-lg font-semibold text-ink">Comprar firmas</h2>
+          <p class="mt-2 text-sm text-slate-600">
+            Compra simulada: no se realizará ningún cobro ni se solicitará un medio de pago.
+          </p>
+        </div>
+
+        <div class="mt-5 grid gap-3 sm:grid-cols-3">
+          {balance.packs.map((credits) => (
+            <button
+              class="rounded-3xl border border-slate-200 bg-white px-5 py-5 text-left transition hover:border-accent hover:shadow-sm"
+              data-purchase-credits={credits}
+              type="button"
+            >
+              <span class="block text-3xl font-semibold text-ink">{credits}</span>
+              <span class="mt-1 block text-sm text-slate-500">
+                {credits === 1 ? "firma" : "firmas"} · $0 CLP
+              </span>
+            </button>
+          ))}
+        </div>
+        <div class="mt-4 hidden rounded-2xl px-4 py-3 text-sm" id="purchase-message"></div>
+      </article>
+
+      <article class="panel animate-rise overflow-hidden">
+        <div class="border-b border-slate-100 px-6 py-5">
+          <h2 class="text-lg font-semibold text-ink">Últimos movimientos</h2>
+          <p class="mt-1 text-sm text-slate-500">Se muestran los 20 movimientos más recientes.</p>
+        </div>
+        <div class="divide-y divide-slate-100">
+          {balance.movements.length === 0 ? (
+            <p class="px-6 py-8 text-sm text-slate-500">Todavía no hay movimientos.</p>
+          ) : (
+            balance.movements.map((movement) => (
+              <div class="flex items-center justify-between gap-4 px-6 py-4">
+                <div>
+                  <p class="font-medium text-ink">{movementLabels[movement.type]}</p>
+                  <p class="mt-1 text-sm text-slate-500">
+                    {movement.description ?? "Movimiento de firmas"} · {new Date(movement.createdAt).toLocaleString("es-CL")}
+                  </p>
+                </div>
+                <div class="text-right">
+                  <p class:list={["font-semibold", movement.quantity > 0 ? "text-emerald-700" : "text-slate-700"]}>
+                    {movement.quantity > 0 ? "+" : ""}{movement.quantity}
+                  </p>
+                  <p class="text-xs text-slate-500">Saldo {movement.balanceAfter}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <script is:inline>
+    const message = document.querySelector("#purchase-message");
+    const buttons = document.querySelectorAll("[data-purchase-credits]");
+
+    const showMessage = (copy, success) => {
+      if (!message) return;
+      message.textContent = copy;
+      message.className = `mt-4 rounded-2xl px-4 py-3 text-sm ${success
+        ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+        : "border border-rose-200 bg-rose-50 text-rose-700"}`;
+    };
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", async () => {
+        const credits = Number(button.getAttribute("data-purchase-credits"));
+        const operationId = button.getAttribute("data-operation-id") ?? crypto.randomUUID();
+        button.setAttribute("data-operation-id", operationId);
+        buttons.forEach((item) => item.setAttribute("disabled", "true"));
+        const response = await fetch("/api/balance/purchases", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operationId, credits }),
+        });
+
+        if (!response.ok) {
+          showMessage("No se pudo completar la compra simulada.", false);
+          buttons.forEach((item) => item.removeAttribute("disabled"));
+          return;
+        }
+
+        const result = await response.json();
+        const balanceNode = document.querySelector("#current-balance");
+        if (balanceNode) balanceNode.textContent = String(result.currentBalance);
+        showMessage(`Se agregaron ${credits} firma${credits === 1 ? "" : "s"} a tu saldo.`, true);
+        window.setTimeout(() => window.location.reload(), 700);
+      });
+    });
+  </script>
+</AppLayout>

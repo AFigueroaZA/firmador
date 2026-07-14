@@ -1,5 +1,11 @@
 ---
-import type { IdentityStatusResponse } from "@firmador/shared";
+import type {
+  AdminDashboardResponse,
+  AdminUsersResponse,
+  BalanceResponse,
+  IdentityStatus,
+  IdentityStatusResponse,
+} from "@firmador/shared";
 import AppLayout from "../layouts/AppLayout.astro";
 import InfoCard from "../components/InfoCard.astro";
 import { serverFetch } from "../lib/server/api";
@@ -8,16 +14,50 @@ interface HistoryResponse {
   items: Array<{ status: string }>;
 }
 
-const [historyResponse, identityResponse] = await Promise.all([
-  serverFetch(Astro.request, "/api/history"),
-  serverFetch(Astro.request, "/api/identity/me"),
-]);
-const history = historyResponse.ok
-  ? ((await historyResponse.json()) as HistoryResponse)
-  : { items: [] };
-const identity = identityResponse.ok
-  ? ((await identityResponse.json()) as IdentityStatusResponse)
-  : null;
+const user = Astro.locals.user;
+if (!user) {
+  return Astro.redirect("/login");
+}
+
+let adminDashboard: AdminDashboardResponse | null = null;
+let adminUsers: AdminUsersResponse | null = null;
+let history: HistoryResponse = { items: [] };
+let identity: IdentityStatusResponse | null = null;
+let balance: BalanceResponse | null = null;
+
+const filters = new URLSearchParams();
+for (const key of ["page", "q", "isActive", "identityStatus"]) {
+  const value = Astro.url.searchParams.get(key);
+  if (value) filters.set(key, value);
+}
+
+if (user.role === "admin") {
+  const [dashboardResponse, usersResponse] = await Promise.all([
+    serverFetch(Astro.request, "/api/admin/dashboard"),
+    serverFetch(Astro.request, `/api/admin/users?${filters.toString()}`),
+  ]);
+  adminDashboard = dashboardResponse.ok
+    ? ((await dashboardResponse.json()) as AdminDashboardResponse)
+    : null;
+  adminUsers = usersResponse.ok
+    ? ((await usersResponse.json()) as AdminUsersResponse)
+    : null;
+} else {
+  const [historyResponse, identityResponse, balanceResponse] = await Promise.all([
+    serverFetch(Astro.request, "/api/history"),
+    serverFetch(Astro.request, "/api/identity/me"),
+    serverFetch(Astro.request, "/api/balance"),
+  ]);
+  history = historyResponse.ok
+    ? ((await historyResponse.json()) as HistoryResponse)
+    : { items: [] };
+  identity = identityResponse.ok
+    ? ((await identityResponse.json()) as IdentityStatusResponse)
+    : null;
+  balance = balanceResponse.ok
+    ? ((await balanceResponse.json()) as BalanceResponse)
+    : null;
+}
 
 const total = history.items.length;
 const signed = history.items.filter((item) => item.status === "SIGNED").length;
@@ -31,41 +71,249 @@ const pending = history.items.filter((item) =>
     "SIGNING",
   ].includes(item.status),
 ).length;
+
+const identityLabels: Record<IdentityStatus, string> = {
+  NOT_STARTED: "Sin iniciar",
+  VALIDATED: "Perfil pendiente",
+  READY: "Lista para firmar",
+  FAILED: "Fallida",
+};
+const pageHref = (page: number) => {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  params.set("page", String(page));
+  return `/dashboard?${params.toString()}`;
+};
 ---
 
-<AppLayout title="Dashboard operativo" user={Astro.locals.user}>
-  <section class="grid gap-4 lg:grid-cols-3">
-    <InfoCard title="Procesos totales" value={String(total)} subtitle="Historial del usuario o del entorno admin" />
-    <InfoCard title="Firmas exitosas" value={String(signed)} subtitle="Documentos listos para descarga" />
-    <InfoCard title="En curso" value={String(pending)} subtitle="Procesos esperando interaccion o proveedor" />
-  </section>
+<AppLayout title={user.role === "admin" ? "Administración" : "Dashboard operativo"} user={user}>
+  {user.role === "admin" ? (
+    <div class="space-y-6">
+      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <InfoCard title="Usuarios" value={String(adminDashboard?.users.total ?? 0)} subtitle={`${adminDashboard?.users.active ?? 0} activos · ${adminDashboard?.users.inactive ?? 0} inactivos`} />
+        <InfoCard title="Identidad lista" value={String(adminDashboard?.identities.ready ?? 0)} subtitle={`${adminDashboard?.identities.pending ?? 0} pendientes · ${adminDashboard?.identities.failed ?? 0} fallidas`} />
+        <InfoCard title="Firmas disponibles" value={String(adminDashboard?.totalAvailableCredits ?? 0)} subtitle="Saldo total de usuarios" />
+        <InfoCard title="Firmas completadas" value={String(adminDashboard?.signing.signed ?? 0)} subtitle={`${adminDashboard?.signing.inProgress ?? 0} procesos en curso`} />
+      </section>
 
-  <section class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr),320px]">
-    <article class="panel animate-rise px-6 py-6">
-      <h2 class="text-lg font-semibold text-ink">
-        {identity?.canSign ? "Flujo principal" : "Habilitacion requerida"}
-      </h2>
-      <ol class="mt-4 space-y-3 text-sm text-slate-600">
-        <li>1. Valida identidad y completa perfil.</li>
-        <li>2. Carga un PDF y configura la firma visible.</li>
-        <li>3. Confirma el pago demo o saldo disponible.</li>
-        <li>4. Descarga el PDF firmado desde el resultado.</li>
-      </ol>
-      <div class="mt-6 flex flex-wrap gap-3">
-        {identity?.canSign ? (
-          <a class="button-primary" href="/sign/new">Firmar un PDF</a>
-        ) : (
-          <a class="button-primary" href="/identity?next=/sign/new">Validar identidad</a>
+      <section class="panel animate-rise px-6 py-5">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-semibold text-ink">Actividad global de firmas</h2>
+            <p class="mt-1 text-sm text-slate-500">Solo totales operativos; no se exponen documentos ni procesos individuales.</p>
+          </div>
+          <div class="flex flex-wrap gap-2 text-sm">
+            <span class="rounded-full bg-slate-100 px-3 py-2">Total {adminDashboard?.signing.total ?? 0}</span>
+            <span class="rounded-full bg-amber-50 px-3 py-2 text-amber-800">En curso {adminDashboard?.signing.inProgress ?? 0}</span>
+            <span class="rounded-full bg-rose-50 px-3 py-2 text-rose-700">Fallidos {adminDashboard?.signing.failed ?? 0}</span>
+            <span class="rounded-full bg-slate-100 px-3 py-2">Expirados {adminDashboard?.signing.expired ?? 0}</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel animate-rise overflow-hidden">
+        <div class="border-b border-slate-100 px-6 py-5">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-ink">Usuarios firmantes</h2>
+              <p class="mt-1 text-sm text-slate-500">Gestiona acceso y saldo sin entrar a sus documentos.</p>
+            </div>
+            <form class="grid gap-2 sm:grid-cols-3" method="get">
+              <input class="field py-2" name="q" placeholder="Nombre o email" value={Astro.url.searchParams.get("q") ?? ""} />
+              <select class="field py-2" name="isActive">
+                <option value="">Todas las cuentas</option>
+                <option value="true" selected={Astro.url.searchParams.get("isActive") === "true"}>Activas</option>
+                <option value="false" selected={Astro.url.searchParams.get("isActive") === "false"}>Inactivas</option>
+              </select>
+              <select class="field py-2" name="identityStatus">
+                <option value="">Toda identidad</option>
+                {Object.entries(identityLabels).map(([value, label]) => (
+                  <option value={value} selected={Astro.url.searchParams.get("identityStatus") === value}>{label}</option>
+                ))}
+              </select>
+              <button class="button-secondary py-2 sm:col-span-3" type="submit">Aplicar filtros</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-left text-sm">
+            <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th class="px-6 py-3">Usuario</th>
+                <th class="px-4 py-3">Cuenta</th>
+                <th class="px-4 py-3">Identidad</th>
+                <th class="px-4 py-3">Saldo</th>
+                <th class="px-4 py-3">Actividad</th>
+                <th class="px-6 py-3 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              {(adminUsers?.items.length ?? 0) === 0 ? (
+                <tr><td class="px-6 py-8 text-slate-500" colspan="6">No hay usuarios para estos filtros.</td></tr>
+              ) : adminUsers?.items.map((item) => (
+                <tr>
+                  <td class="px-6 py-4">
+                    <p class="font-semibold text-ink">{item.fullName}</p>
+                    <p class="mt-1 text-xs text-slate-500">{item.email}</p>
+                  </td>
+                  <td class="px-4 py-4">
+                    <span class:list={["rounded-full px-3 py-1 text-xs font-semibold", item.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"]}>
+                      {item.isActive ? "Activa" : "Inactiva"}
+                    </span>
+                  </td>
+                  <td class="px-4 py-4 text-slate-600">{identityLabels[item.identityStatus]}</td>
+                  <td class="px-4 py-4 font-semibold text-ink">{item.currentBalance}</td>
+                  <td class="px-4 py-4 text-xs text-slate-500">
+                    <p>{item.lastLoginAt ? `Acceso ${new Date(item.lastLoginAt).toLocaleString("es-CL")}` : "Sin accesos"}</p>
+                    <p class="mt-1">Alta {new Date(item.createdAt).toLocaleDateString("es-CL")}</p>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="flex justify-end gap-2">
+                      <button class="button-secondary px-3 py-2" data-adjust-id={item.id} data-adjust-name={item.fullName} type="button">Ajustar</button>
+                      <button class="button-secondary px-3 py-2" data-status-id={item.id} data-next-status={String(!item.isActive)} type="button">
+                        {item.isActive ? "Desactivar" : "Activar"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {(adminUsers?.totalPages ?? 1) > 1 && (
+          <div class="flex items-center justify-between border-t border-slate-100 px-6 py-4 text-sm">
+            <span class="text-slate-500">Página {adminUsers?.page} de {adminUsers?.totalPages}</span>
+            <div class="flex gap-2">
+              {adminUsers && adminUsers.page > 1 && <a class="button-secondary px-3 py-2" href={pageHref(adminUsers.page - 1)}>Anterior</a>}
+              {adminUsers && adminUsers.page < adminUsers.totalPages && <a class="button-secondary px-3 py-2" href={pageHref(adminUsers.page + 1)}>Siguiente</a>}
+            </div>
+          </div>
         )}
-        <a class="button-secondary" href="/history">Ver historial</a>
-      </div>
-    </article>
+      </section>
 
-    <aside class="panel animate-rise px-6 py-6">
-      <h2 class="text-lg font-semibold text-ink">Trazabilidad</h2>
-      <p class="mt-3 text-sm text-slate-600">
-        El sistema guarda estados, errores y metadatos, y el almacenamiento queda encapsulado para migrarlo despues.
-      </p>
-    </aside>
-  </section>
+      <dialog class="w-[min(92vw,520px)] rounded-3xl p-0 shadow-2xl backdrop:bg-slate-900/30" id="adjust-dialog">
+        <form class="p-6" id="adjust-form">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-semibold text-ink">Ajustar saldo</h2>
+              <p class="mt-1 text-sm text-slate-500" id="adjust-user-name"></p>
+            </div>
+            <button class="rounded-full px-3 py-2 text-slate-500 hover:bg-slate-100" data-close-dialog type="button">Cerrar</button>
+          </div>
+          <input id="adjust-user-id" type="hidden" />
+          <label class="mt-5 block text-sm font-medium text-slate-700">
+            Cantidad
+            <input class="field mt-2" id="adjust-quantity" placeholder="Ej: 5 o -2" required type="number" />
+          </label>
+          <label class="mt-4 block text-sm font-medium text-slate-700">
+            Motivo
+            <textarea class="field mt-2 min-h-24" id="adjust-reason" minlength="3" maxlength="250" required></textarea>
+          </label>
+          <p class="mt-4 hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="admin-action-error"></p>
+          <button class="button-primary mt-5 w-full" type="submit">Guardar ajuste</button>
+        </form>
+      </dialog>
+    </div>
+  ) : (
+    <>
+      <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <InfoCard title="Firmas disponibles" value={String(balance?.currentBalance ?? 0)} subtitle="Saldo listo para usar" />
+        <InfoCard title="Procesos totales" value={String(total)} subtitle="Tu historial de firmas" />
+        <InfoCard title="Firmas exitosas" value={String(signed)} subtitle="Documentos listos para descarga" />
+        <InfoCard title="En curso" value={String(pending)} subtitle="Procesos pendientes" />
+      </section>
+
+      <section class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr),320px]">
+        <article class="panel animate-rise px-6 py-6">
+          <h2 class="text-lg font-semibold text-ink">
+            {identity?.canSign ? "Flujo principal" : "Habilitación requerida"}
+          </h2>
+          <ol class="mt-4 space-y-3 text-sm text-slate-600">
+            <li>1. Valida identidad y completa perfil.</li>
+            <li>2. Carga un PDF y configura la firma visible.</li>
+            <li>3. Confirma una firma disponible de tu saldo.</li>
+            <li>4. Descarga el PDF firmado desde el resultado.</li>
+          </ol>
+          <div class="mt-6 flex flex-wrap gap-3">
+            {identity?.canSign ? (
+              <a class="button-primary" href="/sign/new">Firmar un PDF</a>
+            ) : (
+              <a class="button-primary" href="/identity?next=/sign/new">Validar identidad</a>
+            )}
+            <a class="button-secondary" href="/balance">Gestionar saldo</a>
+            <a class="button-secondary" href="/history">Ver historial</a>
+          </div>
+        </article>
+
+        <aside class="panel animate-rise px-6 py-6">
+          <h2 class="text-lg font-semibold text-ink">Saldo protegido</h2>
+          <p class="mt-3 text-sm text-slate-600">
+            La firma se reserva al comenzar y se devuelve si el proceso falla o expira.
+          </p>
+        </aside>
+      </section>
+    </>
+  )}
+
+  {user.role === "admin" && (
+    <script is:inline>
+      const dialog = document.querySelector("#adjust-dialog");
+      const errorBox = document.querySelector("#admin-action-error");
+      const showError = (message) => {
+        if (!errorBox) return;
+        errorBox.textContent = message;
+        errorBox.classList.remove("hidden");
+      };
+
+      document.querySelectorAll("[data-adjust-id]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelector("#adjust-user-id").value = button.getAttribute("data-adjust-id") ?? "";
+          document.querySelector("#adjust-user-name").textContent = button.getAttribute("data-adjust-name") ?? "";
+          document.querySelector("#adjust-form").setAttribute("data-operation-id", crypto.randomUUID());
+          errorBox?.classList.add("hidden");
+          dialog?.showModal();
+        });
+      });
+      document.querySelector("[data-close-dialog]")?.addEventListener("click", () => dialog?.close());
+
+      document.querySelector("#adjust-form")?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const userId = document.querySelector("#adjust-user-id").value;
+        const quantity = Number(document.querySelector("#adjust-quantity").value);
+        const reason = document.querySelector("#adjust-reason").value;
+        const operationId = event.currentTarget.getAttribute("data-operation-id") ?? crypto.randomUUID();
+        const response = await fetch(`/api/admin/users/${userId}/balance-adjustments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ operationId, quantity, reason }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          showError(payload?.message ?? "No se pudo ajustar el saldo.");
+          return;
+        }
+        window.location.reload();
+      });
+
+      document.querySelectorAll("[data-status-id]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          button.setAttribute("disabled", "true");
+          const userId = button.getAttribute("data-status-id");
+          const isActive = button.getAttribute("data-next-status") === "true";
+          const response = await fetch(`/api/admin/users/${userId}/status`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ isActive }),
+          });
+          if (!response.ok) {
+            button.removeAttribute("disabled");
+            window.alert("No se pudo actualizar la cuenta.");
+            return;
+          }
+          window.location.reload();
+        });
+      });
+    </script>
+  )}
 </AppLayout>

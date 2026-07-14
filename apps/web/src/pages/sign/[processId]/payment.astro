@@ -33,9 +33,7 @@ const payment = paymentResponse.ok
     <article class="panel animate-rise px-6 py-6">
       <h2 class="text-lg font-semibold text-ink">Confirmar firma</h2>
       <p class="mt-2 text-sm text-slate-600">
-        {payment?.mode === "live"
-          ? "Revisa el documento antes de iniciar la autorizacion externa con el proveedor de firma."
-          : "Este paso representa la validacion de saldo antes de firmar el PDF en modo demo."}
+        Revisa el documento y confirma el uso de una firma disponible antes de continuar.
       </p>
 
       <dl class="mt-5 grid gap-3 text-sm text-slate-600 md:grid-cols-2">
@@ -44,18 +42,12 @@ const payment = paymentResponse.ok
           <dd>{process.originalFileName}</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
-          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Modo" : "Costo"}</dt>
-          <dd>{payment?.mode === "live" ? "Proveedor externo" : `${payment?.costCredits ?? 1} credito demo`}</dd>
+          <dt class="font-semibold text-slate-700">Costo</dt>
+          <dd>{payment?.costCredits ?? 1} firma disponible</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
-          <dt class="font-semibold text-slate-700">{payment?.mode === "live" ? "Autorizacion" : "Saldo disponible"}</dt>
-          <dd>
-            {payment?.mode === "live"
-              ? payment?.requiresExternalAuthorization
-                ? "Requerida"
-                : "No requerida (certificado vigente)"
-              : payment?.availableCredits ?? 0}
-          </dd>
+          <dt class="font-semibold text-slate-700">Saldo disponible</dt>
+          <dd>{payment?.availableCredits ?? 0}</dd>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-3">
           <dt class="font-semibold text-slate-700">Estado</dt>
@@ -65,7 +57,12 @@ const payment = paymentResponse.ok
 
       {!payment?.eligible && (
         <div class="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {payment?.message ?? "No se pudo validar el saldo demo."}
+          <p>{payment?.message ?? "No se pudo validar el saldo."}</p>
+          {payment?.reason === "INSUFFICIENT_CREDITS" && (
+            <a class="mt-3 inline-flex font-semibold underline" href={`/balance?next=${encodeURIComponent(`/sign/${processId}/payment`)}`}>
+              Comprar firmas
+            </a>
+          )}
         </div>
       )}
       {payment?.eligible && payment?.mode === "live" && !payment?.requiresExternalAuthorization && (
@@ -82,6 +79,7 @@ const payment = paymentResponse.ok
               : "Firmar documento"
             : "Firmar documento"}
         </button>
+        <a class="button-secondary" href="/balance">Ver saldo</a>
         <a class="button-secondary" href="/sign/new">Elegir otro PDF</a>
       </div>
       <div class="mt-4 hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="start-signing-error"></div>
@@ -99,7 +97,7 @@ const payment = paymentResponse.ok
       errorBox?.classList.add("hidden");
 
       const response = mode === "live"
-        ? await fetch(`/api/signing/processes/${processId}/authorize`)
+        ? await fetch(`/api/signing/processes/${processId}/authorize`, { method: "POST" })
         : await fetch(`/api/signing/processes/${processId}/start-signing`, {
             method: "POST",
           });
@@ -107,7 +105,10 @@ const payment = paymentResponse.ok
       if (!response.ok) {
         button.removeAttribute("disabled");
         if (errorBox) {
-          errorBox.textContent = "No se pudo iniciar la firma. Revisa el estado del proceso.";
+          const payload = await response.json().catch(() => null);
+          errorBox.textContent = payload?.code === "INSUFFICIENT_CREDITS"
+            ? "No tienes firmas disponibles. Compra un pack desde Saldo."
+            : payload?.message ?? "No se pudo iniciar la firma. Revisa el estado del proceso.";
           errorBox.classList.remove("hidden");
         }
         return;

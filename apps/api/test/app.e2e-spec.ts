@@ -214,6 +214,22 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
   it('enables the demo-first flow after mock identity onboarding', async () => {
     const authCookies = await loginOperator();
 
+    const balanceResponse = await request(httpServer)
+      .get('/api/balance')
+      .set('Cookie', authCookies)
+      .expect(200);
+    let expectedBalance = (balanceResponse.body as { currentBalance: number })
+      .currentBalance;
+    if (expectedBalance < 1) {
+      const purchaseResponse = await request(httpServer)
+        .post('/api/balance/purchases')
+        .set('Cookie', authCookies)
+        .send({ operationId: randomUUID(), credits: 1 })
+        .expect(201);
+      expectedBalance = (purchaseResponse.body as { currentBalance: number })
+        .currentBalance;
+    }
+
     const initialIdentityResponse = await request(httpServer)
       .get('/api/identity/me')
       .set('Cookie', authCookies)
@@ -311,7 +327,8 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
       mode: 'mock',
       eligible: true,
       costCredits: 1,
-      availableCredits: 1,
+      availableCredits: expectedBalance,
+      reason: 'READY',
     });
 
     const signedResponse = await request(httpServer)
@@ -330,10 +347,10 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
       .expect('Content-Type', /application\/pdf/);
   });
 
-  it('blocks demo signing until identity onboarding is complete', async () => {
+  it('blocks administrators from signer APIs', async () => {
     const authCookies = await loginAdmin();
 
-    const createResponse = await request(httpServer)
+    await request(httpServer)
       .post('/api/signing/processes')
       .set('Cookie', authCookies)
       .field('visible', 'true')
@@ -346,12 +363,18 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
         filename: 'blocked-demo.pdf',
         contentType: 'application/pdf',
       })
-      .expect(201);
-
-    const createBody = createResponse.body as CreateSigningProcessResponse;
+      .expect(403);
 
     await request(httpServer)
-      .post(`/api/signing/processes/${createBody.processId}/start-signing`)
+      .get('/api/history')
+      .set('Cookie', authCookies)
+      .expect(403);
+    await request(httpServer)
+      .get('/api/identity/me')
+      .set('Cookie', authCookies)
+      .expect(403);
+    await request(httpServer)
+      .get('/api/balance')
       .set('Cookie', authCookies)
       .expect(403);
   });
@@ -359,6 +382,12 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
   it('completes the visual placement happy path with the mock provider', async () => {
     const authCookies = await loginOperator();
     const originalPdf = await createPdf();
+
+    await request(httpServer)
+      .post('/api/balance/purchases')
+      .set('Cookie', authCookies)
+      .send({ operationId: randomUUID(), credits: 1 })
+      .expect(201);
 
     const createResponse = await request(httpServer)
       .post('/api/signing/processes')
@@ -383,7 +412,7 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
       .expect('Content-Type', /application\/pdf/);
 
     await request(httpServer)
-      .get(`/api/signing/processes/${processId}/authorize`)
+      .post(`/api/signing/processes/${processId}/authorize`)
       .set('Cookie', authCookies)
       .expect(400);
 
@@ -406,7 +435,7 @@ describeSupabaseE2e('Firmador flow (Supabase e2e)', () => {
     expect(configuredBody.pdfMetadata?.pageCount).toBe(1);
 
     const authorizeResponse = await request(httpServer)
-      .get(`/api/signing/processes/${processId}/authorize`)
+      .post(`/api/signing/processes/${processId}/authorize`)
       .set('Cookie', authCookies)
       .expect(200);
 

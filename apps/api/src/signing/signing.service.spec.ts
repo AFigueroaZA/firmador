@@ -52,9 +52,6 @@ describe('SigningService', () => {
       documentRepository as never,
       {} as never,
       {
-        findOne: jest.fn(() => Promise.resolve({ id: 'account-id' })),
-      } as never,
-      {
         findOne: jest.fn(() => Promise.resolve({ id: 'status-id' })),
       } as never,
       {
@@ -75,6 +72,11 @@ describe('SigningService', () => {
       { record: jest.fn(() => Promise.resolve(undefined)) } as never,
       {} as never,
       {} as never,
+      {
+        ensureAccount: jest.fn(() =>
+          Promise.resolve({ id: 'account-id', currentBalance: 1 }),
+        ),
+      } as never,
     );
     const pdfFile = {
       originalname: 'documento.pdf',
@@ -176,7 +178,6 @@ describe('SigningService', () => {
       registrationRepository as never,
       {} as never,
       {} as never,
-      {} as never,
       {
         findOne: jest.fn(() => Promise.resolve({ id: 'status-id' })),
       } as never,
@@ -199,8 +200,14 @@ describe('SigningService', () => {
             profile: { email: 'user@example.test' },
           }),
         ),
+        ensureCanSign: jest.fn(() => Promise.resolve(undefined)),
       } as never,
       providerService as never,
+      {
+        getCurrentBalance: jest.fn(() => Promise.resolve(1)),
+        reserveForProcess: jest.fn(() => Promise.resolve(0)),
+        refundForProcess: jest.fn(() => Promise.resolve(true)),
+      } as never,
     );
     if (originalMode === undefined) {
       delete process.env.SIGNING_PROVIDER_MODE;

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 import { DocumentsModule } from '../documents/documents.module';
+import { CreditsModule } from '../credits/credits.module';
 import { IdentityModule } from '../identity/identity.module';
 import { ProviderModule } from '../provider/provider.module';
 import { DocumentEntity } from './entities/document.entity';
@@ -26,6 +27,7 @@ import { SigningService } from './signing.service';
     ]),
     AuditModule,
     AuthModule,
+    CreditsModule,
     DocumentsModule,
     IdentityModule,
     forwardRef(() => ProviderModule),

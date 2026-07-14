@@ -138,9 +138,7 @@ export class EnrollmentService {
       },
     });
     if (!identity) {
-      throw new NotFoundException(
-        'Enrollment validation state was not found.',
-      );
+      throw new NotFoundException('Enrollment validation state was not found.');
     }
     identity.externalAuthState = null;
     await this.identityRepository.save(identity);
@@ -425,8 +423,8 @@ export class EnrollmentService {
     const validatedAt = context?.claveValidatedAt ?? null;
     const fresh = Boolean(
       context?.claveIdValidation &&
-        validatedAt &&
-        Date.now() - Date.parse(validatedAt) < CLAVE_VALIDATION_TTL_MS,
+      validatedAt &&
+      Date.now() - Date.parse(validatedAt) < CLAVE_VALIDATION_TTL_MS,
     );
     return { validatedAt, fresh };
   }

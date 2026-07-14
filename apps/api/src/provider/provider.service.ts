@@ -145,9 +145,7 @@ export class ProviderService {
       return typeof value;
     }
     if (Array.isArray(value)) {
-      return value.length
-        ? [this.describeShape(value[0], depth + 1)]
-        : [];
+      return value.length ? [this.describeShape(value[0], depth + 1)] : [];
     }
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([key, child]) => [

@@ -14,11 +14,7 @@ const history = response.ok
   <section class="panel animate-rise overflow-hidden">
     <div class="border-b border-slate-100 px-6 py-5">
       <h2 class="text-lg font-semibold text-ink">Procesos recientes</h2>
-      <p class="mt-2 text-sm text-slate-500">
-        {Astro.locals.user?.role === "admin"
-          ? "Como admin ves todos los procesos registrados."
-          : "Aquí verás solo tus procesos."}
-      </p>
+      <p class="mt-2 text-sm text-slate-500">Aquí verás solo tus procesos.</p>
     </div>
 
     <div class="divide-y divide-slate-100">
