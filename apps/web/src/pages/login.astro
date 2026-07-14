@@ -1,4 +1,6 @@
 ---
+import Alert from "../components/ui/Alert.astro";
+import PageHeader from "../components/ui/PageHeader.astro";
 import AppLayout from "../layouts/AppLayout.astro";
 
 const error = Astro.url.searchParams.get("error");
@@ -6,31 +8,24 @@ const error = Astro.url.searchParams.get("error");
 
 <AppLayout title="Ingreso al sistema">
   <section class="mx-auto max-w-md animate-rise">
-    <div class="panel px-6 py-6">
-      <p class="text-sm text-slate-500">
-        Ingresa con una cuenta interna del sistema para iniciar el flujo de firma.
-      </p>
+    <div class="panel px-7 py-8 sm:px-8">
+      <PageHeader eyebrow="Bienvenido" title="Ingresa a tu cuenta" description="Accede a tus documentos, saldo e historial de firmas." />
       <form action="/session/login" class="mt-6 space-y-4" method="post">
-        <label class="block text-sm text-slate-600">
+        <label class="block text-sm font-medium text-slate-700">
           Correo
-          <input class="field mt-2" name="email" type="email" required />
+          <input class="field mt-2" autocomplete="email" name="email" type="email" required />
         </label>
-        <label class="block text-sm text-slate-600">
+        <label class="block text-sm font-medium text-slate-700">
           Contraseña
-          <input class="field mt-2" name="password" type="password" required />
+          <input class="field mt-2" autocomplete="current-password" name="password" type="password" required />
         </label>
-        {error && (
-          <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            Credenciales inválidas o sesión no disponible.
-          </div>
-        )}
+        {error && <Alert tone="danger">Credenciales inválidas o sesión no disponible.</Alert>}
         <button class="button-primary w-full" type="submit">Entrar</button>
       </form>
-      <div class="mt-6 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+      <a class="button-ghost mt-4 w-full" href="/">Volver al inicio</a>
+      <div class="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
         <p class="font-semibold text-slate-700">Acceso inicial</p>
-        <p class="mt-2">
-          Las cuentas seed se configuran con variables de entorno y deben ser compartidas por un administrador.
-        </p>
+        <p class="mt-2">Las cuentas iniciales son gestionadas por un administrador y nunca se muestran en esta pantalla.</p>
       </div>
     </div>
   </section>

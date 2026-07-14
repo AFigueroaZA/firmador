@@ -2,6 +2,7 @@
 import type { BalanceResponse, CreditMovementType } from "@firmador/shared";
 import AppLayout from "../layouts/AppLayout.astro";
 import LoadingSpinner from "../components/LoadingSpinner.astro";
+import PageHeader from "../components/ui/PageHeader.astro";
 import { serverFetchJson } from "../lib/server/api";
 
 if (Astro.locals.user?.role !== "operator") {
@@ -23,7 +24,10 @@ const movementLabels: Record<CreditMovementType, string> = {
 };
 ---
 
-<AppLayout title="Saldo de firmas" user={Astro.locals.user}>
+<AppLayout title="Mis firmas" user={Astro.locals.user} credits={balance?.currentBalance}>
+  <PageHeader class="mb-7" eyebrow="Créditos" title="Mis firmas" description="Consulta tu saldo, agrega firmas y revisa los movimientos recientes.">
+    <a class="button-accent" href="#packs" slot="actions">Comprar créditos</a>
+  </PageHeader>
   {balanceResult.error && (
     <div class="mb-5 rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800" role="alert">
       <p class="font-semibold">No pudimos consultar tu saldo</p>
@@ -31,88 +35,100 @@ const movementLabels: Record<CreditMovementType, string> = {
       <a class="button-secondary mt-3 px-4 py-2" href={Astro.url.pathname + Astro.url.search}>Reintentar</a>
     </div>
   )}
-  <section class="grid gap-5 lg:grid-cols-[340px,minmax(0,1fr)]">
-    <aside class="panel animate-rise px-6 py-6">
-      <p class="text-sm font-medium text-slate-500">Firmas disponibles</p>
-      <p class="mt-2 text-5xl font-semibold text-ink" id="current-balance">
+  <section class="balance-summary grid gap-5 md:grid-cols-3">
+    <article class="panel-ink animate-rise px-6 py-6">
+      <p class="text-sm font-medium text-white/65">Saldo disponible</p>
+      <p class="mt-4 text-4xl font-semibold text-white" id="current-balance">
         {balance ? balance.currentBalance : "—"}
+        {balance && <span class="text-sm font-medium text-white/65"> firmas</span>}
       </p>
-      <p class="mt-3 text-sm text-slate-600">
-        Cada documento utiliza una firma. Si un proceso falla o expira, la firma se devuelve automáticamente.
-      </p>
+      <p class="mt-4 text-sm text-white/65">1 firma = 1 documento FEA</p>
       {next && (
         <a class="button-secondary mt-5 w-full" href={next}>Volver a la firma</a>
       )}
-    </aside>
+    </article>
 
-    <div class="space-y-5">
-      <article class="panel animate-rise px-6 py-6">
-        <div>
-          <h2 class="text-lg font-semibold text-ink">Comprar firmas</h2>
-          <p class="mt-2 text-sm text-slate-600">
-            Compra simulada: no se realizará ningún cobro ni se solicitará un medio de pago.
-          </p>
-        </div>
+    <article class="panel animate-rise px-6 py-6">
+      <p class="text-sm font-medium text-slate-500">Packs disponibles</p>
+      <p class="mt-4 text-4xl font-semibold text-ink">{balance ? balance.packs.length : "—"}</p>
+      <p class="mt-4 text-sm text-slate-500">Opciones configuradas para agregar firmas.</p>
+    </article>
 
-        {balance ? (
-          <div class="mt-5 grid gap-3 sm:grid-cols-3">
-            {balance.packs.map((credits) => (
-            <button
-              class="rounded-3xl border border-slate-200 bg-white px-5 py-5 text-left transition hover:border-accent hover:shadow-sm"
-              data-purchase-credits={credits}
-              type="button"
-            >
-              <span data-action-idle>
-                <span class="block text-3xl font-semibold text-ink">{credits}</span>
-                <span class="mt-1 block text-sm text-slate-500">
-                  {credits === 1 ? "firma" : "firmas"} · $0 CLP
-                </span>
-              </span>
-              <span class="hidden min-h-14 items-center" data-action-loading>
-                <LoadingSpinner label="Agregando" size="sm" />
-              </span>
-            </button>
-            ))}
-          </div>
+    <article class="panel animate-rise px-6 py-6">
+      <p class="text-sm font-medium text-slate-500">Movimientos recientes</p>
+      <p class="mt-4 text-4xl font-semibold text-coral-700">{balance ? balance.movements.length : "—"}</p>
+      <p class="mt-4 text-sm text-slate-500">Actividad disponible en la consulta actual.</p>
+    </article>
+  </section>
+
+  <section class="balance-content mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <article class="panel animate-rise overflow-hidden">
+      <div class="border-b border-slate-100 px-6 py-5">
+        <h2 class="text-lg font-semibold text-ink">Movimientos</h2>
+        <p class="mt-1 text-sm text-slate-500">Se muestran los 20 movimientos más recientes.</p>
+      </div>
+      <div class="divide-y divide-slate-100">
+        {!balance ? (
+          <p class="px-6 py-8 text-sm text-slate-500">Movimientos no disponibles temporalmente.</p>
+        ) : balance.movements.length === 0 ? (
+          <p class="px-6 py-8 text-sm text-slate-500">Todavía no hay movimientos.</p>
         ) : (
-          <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
-            Las compras estarán disponibles cuando se recupere la conexión con el saldo.
-          </p>
-        )}
-        <div class="mt-4 hidden rounded-2xl px-4 py-3 text-sm" id="purchase-message"></div>
-      </article>
-
-      <article class="panel animate-rise overflow-hidden">
-        <div class="border-b border-slate-100 px-6 py-5">
-          <h2 class="text-lg font-semibold text-ink">Últimos movimientos</h2>
-          <p class="mt-1 text-sm text-slate-500">Se muestran los 20 movimientos más recientes.</p>
-        </div>
-        <div class="divide-y divide-slate-100">
-          {!balance ? (
-            <p class="px-6 py-8 text-sm text-slate-500">Movimientos no disponibles temporalmente.</p>
-          ) : balance.movements.length === 0 ? (
-            <p class="px-6 py-8 text-sm text-slate-500">Todavía no hay movimientos.</p>
-          ) : (
-            balance.movements.map((movement) => (
-              <div class="flex items-center justify-between gap-4 px-6 py-4">
-                <div>
-                  <p class="font-medium text-ink">{movementLabels[movement.type]}</p>
-                  <p class="mt-1 text-sm text-slate-500">
-                    {movement.description ?? "Movimiento de firmas"} · {new Date(movement.createdAt).toLocaleString("es-CL")}
-                  </p>
-                </div>
-                <div class="text-right">
-                  <p class:list={["font-semibold", movement.quantity > 0 ? "text-emerald-700" : "text-slate-700"]}>
-                    {movement.quantity > 0 ? "+" : ""}{movement.quantity}
-                  </p>
-                  <p class="text-xs text-slate-500">Saldo {movement.balanceAfter}</p>
-                </div>
+          balance.movements.map((movement) => (
+            <div class="flex items-center justify-between gap-4 px-6 py-4">
+              <div>
+                <p class="font-medium text-ink">{movementLabels[movement.type]}</p>
+                <p class="mt-1 text-sm text-slate-500">
+                  {movement.description ?? "Movimiento de firmas"} · {new Date(movement.createdAt).toLocaleString("es-CL")}
+                </p>
               </div>
-            ))
-          )}
+              <div class="text-right">
+                <p class:list={["font-semibold", movement.quantity > 0 ? "text-emerald-700" : "text-slate-700"]}>
+                  {movement.quantity > 0 ? "+" : ""}{movement.quantity}
+                </p>
+                <p class="text-xs text-slate-500">Saldo {movement.balanceAfter}</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </article>
+
+    <aside class="panel animate-rise px-6 py-6" id="packs">
+      <div>
+        <h2 class="text-lg font-semibold text-ink">Packs de firmas</h2>
+        <p class="mt-2 text-sm text-slate-600">
+          Compra simulada, sin cobro ni medio de pago.
+        </p>
+      </div>
+
+      {balance ? (
+        <div class="mt-5 space-y-3">
+          {balance.packs.map((credits) => (
+          <button
+            class="flex min-h-[72px] w-full items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-accent hover:shadow-sm"
+            data-purchase-credits={credits}
+            type="button"
+          >
+            <span class="flex flex-1 items-center justify-between gap-4" data-action-idle>
+              <span>
+                <span class="block font-semibold text-ink">{credits} {credits === 1 ? "firma" : "firmas"}</span>
+                <span class="mt-1 block font-mono text-xs text-slate-500">$0 CLP</span>
+              </span>
+              <span class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Agregar</span>
+            </span>
+            <span class="hidden items-center" data-action-loading>
+              <LoadingSpinner label="Agregando" size="sm" />
+            </span>
+          </button>
+          ))}
         </div>
-      </article>
-    </div>
+      ) : (
+        <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+          Las compras estarán disponibles cuando se recupere la conexión con el saldo.
+        </p>
+      )}
+      <div class="mt-4 hidden rounded-2xl px-4 py-3 text-sm" id="purchase-message"></div>
+    </aside>
   </section>
 
   <script is:inline>

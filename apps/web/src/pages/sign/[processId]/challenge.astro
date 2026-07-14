@@ -1,6 +1,7 @@
 ---
 import AppLayout from "../../../layouts/AppLayout.astro";
 import type { SigningProcessDetail } from "@firmador/shared";
+import PageHeader from "../../../components/ui/PageHeader.astro";
 import { serverFetch } from "../../../lib/server/api";
 
 const { processId } = Astro.params;
@@ -24,6 +25,7 @@ if (!challenge) {
 
 <AppLayout title="Validación challenge" user={Astro.locals.user}>
   <section class="mx-auto max-w-3xl">
+    <PageHeader class="mb-5" eyebrow="Paso 3 de 4" title="Valida tu identidad" description="Responde las preguntas entregadas por el proveedor para continuar con la firma." />
     <form class="panel animate-rise space-y-5 px-6 py-6" id="challenge-form">
       <input name="idChallenge" type="hidden" value={challenge.idChallenge} />
       <div>
@@ -46,7 +48,7 @@ if (!challenge) {
       ))}
 
       <div class="hidden rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" id="challenge-error"></div>
-      <button class="button-primary" type="submit">Enviar respuestas</button>
+      <button class="button-accent" type="submit">Enviar respuestas</button>
     </form>
   </section>
 

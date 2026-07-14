@@ -9,6 +9,7 @@ import type {
 import AppLayout from "../layouts/AppLayout.astro";
 import InfoCard from "../components/InfoCard.astro";
 import LoadingSpinner from "../components/LoadingSpinner.astro";
+import PageHeader from "../components/ui/PageHeader.astro";
 import { serverFetchJson } from "../lib/server/api";
 
 interface HistoryResponse {
@@ -86,7 +87,13 @@ const pageHref = (page: number) => {
 };
 ---
 
-<AppLayout title={user.role === "admin" ? "Administración" : "Dashboard operativo"} user={user}>
+<AppLayout title={user.role === "admin" ? "Administración" : "Dashboard"} user={user} credits={balance?.currentBalance}>
+  <PageHeader
+    class="mb-7"
+    eyebrow={user.role === "admin" ? "Gestión operativa" : "Tu espacio de firma"}
+    title={user.role === "admin" ? "Administración" : `Hola, ${user.fullName.split(" ")[0]}`}
+    description={user.role === "admin" ? "Supervisa usuarios, identidad, saldo y actividad sin acceder a documentos privados." : "Revisa tu estado y continúa con tu próxima firma."}
+  />
   {user.role === "admin" ? (
     <div class="space-y-6">
       {adminLoadError && (

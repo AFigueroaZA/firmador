@@ -7,12 +7,13 @@ const { status } = Astro.props as Props;
 
 const tone =
   status === "SIGNED"
-    ? "bg-emerald-100 text-emerald-800"
+    ? "bg-emerald-50 text-emerald-700"
     : status === "FAILED" || status === "EXPIRED"
       ? "bg-rose-100 text-rose-700"
       : "bg-slate-100 text-slate-700";
 ---
 
-<span class={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tone}`}>
+<span class={`badge ${tone}`}>
+  <span class="h-1.5 w-1.5 rounded-full bg-current"></span>
   {status}
 </span>

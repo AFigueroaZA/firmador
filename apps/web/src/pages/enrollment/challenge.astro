@@ -1,6 +1,7 @@
 ---
 import type { EnrollmentChallenge, EnrollmentStatusResponse } from "@firmador/shared";
 import AppLayout from "../../layouts/AppLayout.astro";
+import PageHeader from "../../components/ui/PageHeader.astro";
 import { serverFetch } from "../../lib/server/api";
 
 const nextParam = Astro.url.searchParams.get("next") ?? "/dashboard";
@@ -27,6 +28,7 @@ const claveParam = Astro.url.searchParams.get("clave");
 
 <AppLayout title="Habilitar firma electrónica" user={Astro.locals.user}>
   <section class="mx-auto max-w-3xl space-y-5">
+    <PageHeader eyebrow="Último paso" title="Habilita tu firma electrónica" description="Responde una única vez las preguntas del proveedor para emitir tu certificado de firma." />
     <article class="panel animate-rise px-6 py-6">
       <h2 class="text-lg font-semibold text-ink">Habilita tu firma electrónica</h2>
       <p class="mt-2 text-sm text-slate-600">

@@ -1,6 +1,7 @@
 ---
 import AppLayout from "../../../layouts/AppLayout.astro";
 import StatusBadge from "../../../components/StatusBadge.astro";
+import PageHeader from "../../../components/ui/PageHeader.astro";
 import type { SigningProcessDetail } from "@firmador/shared";
 import { serverFetch } from "../../../lib/server/api";
 
@@ -15,6 +16,7 @@ const process = (await response.json()) as SigningProcessDetail;
 
 <AppLayout title="Resultado del proceso" user={Astro.locals.user}>
   <section class="mx-auto max-w-4xl space-y-4">
+    <PageHeader eyebrow="Proceso finalizado" title="Resultado de la firma" description="Consulta el estado final y descarga el documento cuando esté disponible." />
     <article class="panel animate-rise px-6 py-6">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -38,7 +40,7 @@ const process = (await response.json()) as SigningProcessDetail;
 
       <div class="mt-6 flex flex-wrap gap-3">
         {process.status === "SIGNED" && (
-          <a class="button-primary" href={`/api/signing/processes/${processId}/download`}>
+          <a class="button-accent" href={`/api/signing/processes/${processId}/download`}>
             Descargar PDF firmado
           </a>
         )}
