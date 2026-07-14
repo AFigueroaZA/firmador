@@ -8,7 +8,7 @@ const logout = async (request: Request) => {
     headers.set("cookie", cookie);
   }
 
-  const response = await fetch(apiUrl("/api/auth/logout"), {
+  const response = await fetch(apiUrl(request, "/api/auth/logout"), {
     method: "POST",
     headers,
   });
@@ -23,4 +23,3 @@ const logout = async (request: Request) => {
 
 export const POST: APIRoute = async ({ request }) => logout(request);
 export const GET: APIRoute = async ({ request }) => logout(request);
-

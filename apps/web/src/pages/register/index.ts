@@ -1,8 +1,10 @@
 import type { APIRoute } from "astro";
 import { apiUrl } from "../../lib/server/api";
 
-export const GET: APIRoute = async ({ url }) => {
-  const response = await fetch(apiUrl("/api/registration/clave-unica/authorize"));
+export const GET: APIRoute = async ({ request, url }) => {
+  const response = await fetch(
+    apiUrl(request, "/api/registration/clave-unica/authorize"),
+  );
   if (!response.ok) {
     return Response.redirect(new URL("/?error=registration", url), 302);
   }

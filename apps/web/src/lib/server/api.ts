@@ -1,12 +1,24 @@
 import type { APIContext } from "astro";
 import type { AuthSession } from "@firmador/shared";
+import { resolveApiBaseUrl } from "./api-base-url.mjs";
 
-const API_BASE_URL =
+const CONFIGURED_API_BASE_URL =
   process.env.API_BASE_URL ??
   import.meta.env.API_BASE_URL ??
   "http://127.0.0.1:3000";
+const NETLIFY_RUNTIME =
+  process.env.NETLIFY === "true" ||
+  Boolean(process.env.DEPLOY_PRIME_URL ?? process.env.SITE_NAME);
 
-export const apiUrl = (path: string) => new URL(path, API_BASE_URL).toString();
+export const apiUrl = (request: Request, path: string) =>
+  new URL(
+    path,
+    resolveApiBaseUrl({
+      requestUrl: request.url,
+      configuredBaseUrl: CONFIGURED_API_BASE_URL,
+      netlifyRuntime: NETLIFY_RUNTIME,
+    }),
+  ).toString();
 
 export const serverFetch = (
   request: Request,
@@ -19,7 +31,7 @@ export const serverFetch = (
     headers.set("cookie", cookie);
   }
 
-  return fetch(apiUrl(path), {
+  return fetch(apiUrl(request, path), {
     ...init,
     cache: init?.cache ?? "no-store",
     headers,

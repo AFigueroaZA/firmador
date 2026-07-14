@@ -9,7 +9,7 @@
     "dev:api": "node scripts/with-root-env.mjs pnpm --filter @firmador/api start:dev",
     "dev:web": "node scripts/web-dev.mjs",
     "build": "node scripts/with-root-env.mjs pnpm --filter @firmador/shared build && node scripts/with-root-env.mjs pnpm --filter @firmador/api build && node scripts/with-root-env.mjs pnpm --filter @firmador/web build",
-    "test": "node scripts/with-root-env.mjs pnpm --filter @firmador/api test && node scripts/with-root-env.mjs pnpm --filter @firmador/api test:e2e",
+    "test": "node scripts/with-root-env.mjs pnpm --filter @firmador/api test && node scripts/with-root-env.mjs pnpm --filter @firmador/web test && node scripts/with-root-env.mjs pnpm --filter @firmador/api test:e2e",
     "lint": "node scripts/with-root-env.mjs pnpm --filter @firmador/api lint && node scripts/with-root-env.mjs pnpm --filter @firmador/web check",
     "format": "node scripts/with-root-env.mjs pnpm --filter @firmador/api format",
     "seed": "node scripts/with-root-env.mjs pnpm --filter @firmador/api seed"
