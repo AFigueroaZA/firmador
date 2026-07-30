@@ -8,8 +8,9 @@ Monorepo `pnpm` para una plataforma web de firma de PDFs con:
 
 ## Requisitos
 
-- Node.js 22+
-- `pnpm` 10+ instalado globalmente
+- Node.js 22.12 o posterior, dentro de la linea 22 (la version recomendada esta en `.nvmrc`)
+- `pnpm` 10.6.4
+- Chrome 111+, Safari 16.4+ o Firefox 128+
 
 ## Estructura
 

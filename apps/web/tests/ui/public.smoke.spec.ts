@@ -5,7 +5,9 @@ test("home exposes the primary registration and login paths", async ({ page }) =
 
   await expect(page).toHaveTitle(/Firmador · Firmaliza/);
   await expect(page.getByRole("heading", { name: /Firma tus documentos/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Crear cuenta con ClaveÚnica" })).toHaveAttribute("href", "/register");
+  await expect(
+    page.getByRole("link", { name: "Registrarme con ClaveÚnica" }),
+  ).toHaveAttribute("href", "/register");
   await expect(page.getByRole("button", { name: "Entrar" })).toBeVisible();
   await expect(page).toHaveScreenshot("inicio.png", { fullPage: true, animations: "disabled" });
 });

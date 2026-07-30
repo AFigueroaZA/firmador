@@ -1,8 +1,39 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@theme {
+  --color-ink: #003443;
+  --color-ink-900: #002732;
+  --color-ink-800: #003443;
+  --color-ink-700: #0a4557;
+  --color-ink-600: #17596e;
+  --color-mist: #eff3f6;
+  --color-accent: #f76d5a;
+  --color-coral: #f76d5a;
+  --color-coral-700: #d94e3b;
+  --color-coral-600: #e8563f;
+  --color-coral-500: #f76d5a;
+  --color-coral-100: #fee4de;
+  --color-coral-50: #fff4f1;
+  --color-sand: #f7f4ed;
+  --color-success: #0f766e;
+  --color-danger: #b42318;
+  --shadow-panel: 0 24px 60px -28px rgb(0 52 67 / 28%), 0 2px 6px rgb(0 39 50 / 5%);
+  --shadow-glow: 0 12px 28px -10px rgb(247 109 90 / 45%);
+  --animate-rise: rise 320ms ease-out both;
+
+  @keyframes rise {
+    0% {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
 
 :root {
   color-scheme: light;
