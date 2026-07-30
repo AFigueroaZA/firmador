@@ -193,6 +193,23 @@ export interface AdminUsersResponse {
   totalPages: number;
 }
 
+export type DashboardResponse =
+  | {
+      role: "operator";
+      signing: {
+        total: number;
+        signed: number;
+        pending: number;
+      };
+      identity: IdentityStatusResponse;
+      currentBalance: number;
+    }
+  | {
+      role: "admin";
+      summary: AdminDashboardResponse;
+      users: AdminUsersResponse;
+    };
+
 export type EnrollmentStatus = "NONE" | "PENDING" | "ACTIVE";
 
 export interface EnrollmentChallenge {

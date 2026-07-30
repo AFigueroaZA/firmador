@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { apiUrl } from "../../lib/server/api";
+import { clearSessionCacheCookie } from "../../lib/server/session-cache.mjs";
 
 const logout = async (request: Request) => {
   const headers = new Headers();
@@ -14,6 +15,10 @@ const logout = async (request: Request) => {
   });
 
   const nextHeaders = new Headers(response.headers);
+  nextHeaders.append(
+    "set-cookie",
+    clearSessionCacheCookie(import.meta.env.PROD),
+  );
   nextHeaders.set("location", "/login");
   return new Response(null, {
     status: 302,

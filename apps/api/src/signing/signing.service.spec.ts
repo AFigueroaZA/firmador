@@ -4,6 +4,51 @@ import { SigningProcessEntity } from './entities/signing-process.entity';
 import { SigningService } from './signing.service';
 
 describe('SigningService', () => {
+  it('counts all processes while excluding expired rows from pending work', async () => {
+    const addedSelections: string[] = [];
+    const queryBuilder = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn(function (this: unknown, selection: string): unknown {
+        addedSelections.push(selection);
+        return this;
+      }),
+      where: jest.fn().mockReturnThis(),
+      getRawOne: jest
+        .fn()
+        .mockResolvedValue({ total: '8', signed: '2', pending: '3' }),
+    };
+    const service = new SigningService(
+      {
+        createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.getDashboardCounts('user-1')).resolves.toEqual({
+      total: 8,
+      signed: 2,
+      pending: 3,
+    });
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'process.user_id = :userId',
+      { userId: 'user-1' },
+    );
+    const pendingSql = addedSelections[1] ?? '';
+    expect(pendingSql).toContain("'CONFIGURED'");
+    expect(pendingSql).toContain("'SIGNING'");
+    expect(pendingSql).toContain('process.expires_at > now()');
+  });
+
   it('persists the uploaded signature image reference in process metadata', async () => {
     let savedProcess: SigningProcessEntity | undefined;
     const processRepository = {

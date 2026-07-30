@@ -114,6 +114,7 @@ describe('CreditsService', () => {
 
     return {
       service: new CreditsService(dataSource as never),
+      dataSource,
       accounts,
       movements,
       payments,
@@ -133,6 +134,26 @@ describe('CreditsService', () => {
         (movement) => movement.description === 'Firma de bienvenida.',
       ),
     ).toHaveLength(1);
+  });
+
+  it('reads an existing balance without opening a transaction', async () => {
+    const harness = createHarness();
+    harness.accounts.push({
+      id: 'account-1',
+      userId: 'user-1',
+      currentBalance: 7,
+    } as SignatureAccountEntity);
+
+    await expect(harness.service.getCurrentBalance('user-1')).resolves.toBe(7);
+    expect(harness.dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('creates the account only when the balance account is missing', async () => {
+    const harness = createHarness();
+
+    await expect(harness.service.getCurrentBalance('user-1')).resolves.toBe(1);
+    expect(harness.dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(harness.accounts).toHaveLength(1);
   });
 
   it('purchases a pack idempotently', async () => {

@@ -6,7 +6,7 @@ import {
   decodeSessionCache,
   encodeSessionCache,
   sessionCacheEnabled,
-} from "./lib/server/session-cache";
+} from "./lib/server/session-cache.mjs";
 
 const protectedPrefixes = [
   "/dashboard",

@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CreditsModule } from '../credits/credits.module';
 import { SupabaseModule } from '../supabase/supabase.module';
-import { AuthBootstrapService } from './auth.bootstrap.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { RolesGuard } from './guards/roles.guard';
@@ -17,7 +16,7 @@ import { UserEntity } from './user.entity';
     TypeOrmModule.forFeature([UserEntity, RoleEntity]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthBootstrapService, SessionAuthGuard, RolesGuard],
+  providers: [AuthService, SessionAuthGuard, RolesGuard],
   exports: [AuthService, SessionAuthGuard, RolesGuard, TypeOrmModule],
 })
 export class AuthModule {}

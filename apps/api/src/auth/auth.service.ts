@@ -140,19 +140,6 @@ export class AuthService {
     return profile?.isActive ? this.toRequestUser(profile) : null;
   }
 
-  async getSession(requestUser: RequestUser): Promise<AuthSession> {
-    const user = await this.getUserById(requestUser.id);
-    if (!user?.isActive) {
-      throw new UnauthorizedException('User not found.');
-    }
-
-    return { user: this.toAuthUser(user) };
-  }
-
-  async getUserById(id: string) {
-    return this.userRepository.findOne({ where: { id } });
-  }
-
   async getUserByEmail(email: string) {
     return this.userRepository.findOne({
       where: { email: email.toLowerCase() },

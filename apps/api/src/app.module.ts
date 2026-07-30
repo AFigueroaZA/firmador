@@ -10,6 +10,7 @@ import { loadAppConfig } from './config/app.config';
 import { validateConfig } from './config/env.validation';
 import { createTypeOrmOptions } from './database/typeorm.config';
 import { DocumentsModule } from './documents/documents.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { HealthController } from './health/health.controller';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { HistoryModule } from './history/history.module';
@@ -36,6 +37,7 @@ import { SupabaseModule } from './supabase/supabase.module';
       useFactory: createTypeOrmOptions,
     }),
     SupabaseModule,
+    DashboardModule,
     AdminModule,
     AuthModule,
     BalanceModule,

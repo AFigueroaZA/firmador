@@ -3,6 +3,7 @@ import type {
   AdminDashboardResponse,
   AdminUsersResponse,
   BalanceResponse,
+  DashboardResponse,
   IdentityStatus,
   IdentityStatusResponse,
 } from "@firmador/shared";
@@ -11,10 +12,6 @@ import InfoCard from "../components/InfoCard.astro";
 import LoadingSpinner from "../components/LoadingSpinner.astro";
 import PageHeader from "../components/ui/PageHeader.astro";
 import { serverFetchJson } from "../lib/server/api";
-
-interface HistoryResponse {
-  items: Array<{ status: string }>;
-}
 
 const user = Astro.locals.user;
 if (!user) {
@@ -25,10 +22,12 @@ Astro.response.headers.set("Cache-Control", "private, no-store");
 let adminDashboard: AdminDashboardResponse | null = null;
 let adminUsers: AdminUsersResponse | null = null;
 let adminLoadError: string | null = null;
-let history: HistoryResponse = { items: [] };
 let identity: IdentityStatusResponse | null = null;
-let balance: BalanceResponse | null = null;
+let currentBalance: number | null = null;
 let operatorBalanceError: string | null = null;
+let total = 0;
+let signed = 0;
+let pending = 0;
 
 const filters = new URLSearchParams();
 for (const key of ["page", "q", "isActive", "identityStatus"]) {
@@ -36,43 +35,60 @@ for (const key of ["page", "q", "isActive", "identityStatus"]) {
   if (value) filters.set(key, value);
 }
 
-if (user.role === "admin") {
-  const [dashboardResult, usersResult] = await Promise.all([
+const filterQuery = filters.toString();
+const dashboardResult = await serverFetchJson<DashboardResponse>(
+  Astro.request,
+  `/api/dashboard${filterQuery ? `?${filterQuery}` : ""}`,
+);
+
+if (user.role === "admin" && dashboardResult.data?.role === "admin") {
+  adminDashboard = dashboardResult.data.summary;
+  adminUsers = dashboardResult.data.users;
+} else if (user.role === "operator" && dashboardResult.data?.role === "operator") {
+  identity = dashboardResult.data.identity;
+  currentBalance = dashboardResult.data.currentBalance;
+  total = dashboardResult.data.signing.total;
+  signed = dashboardResult.data.signing.signed;
+  pending = dashboardResult.data.signing.pending;
+} else if (user.role === "admin") {
+  const [legacyDashboardResult, usersResult] = await Promise.all([
     serverFetchJson<AdminDashboardResponse>(Astro.request, "/api/admin/dashboard"),
-    serverFetchJson<AdminUsersResponse>(Astro.request, `/api/admin/users?${filters.toString()}`),
+    serverFetchJson<AdminUsersResponse>(Astro.request, `/api/admin/users?${filterQuery}`),
   ]);
-  adminDashboard = dashboardResult.data;
+  adminDashboard = legacyDashboardResult.data;
   adminUsers = usersResult.data;
-  const errors = [dashboardResult.error, usersResult.error].filter(Boolean);
+  const errors = [legacyDashboardResult.error, usersResult.error].filter(Boolean);
   adminLoadError = errors.length > 0
     ? "No pudimos cargar toda la información administrativa. Intenta nuevamente."
     : null;
 } else {
+  interface HistoryResponse {
+    items: Array<{ status: string }>;
+  }
   const [historyResult, identityResult, balanceResult] = await Promise.all([
     serverFetchJson<HistoryResponse>(Astro.request, "/api/history"),
     serverFetchJson<IdentityStatusResponse>(Astro.request, "/api/identity/me"),
     serverFetchJson<BalanceResponse>(Astro.request, "/api/balance"),
   ]);
-  history = historyResult.data ?? { items: [] };
+  const history = historyResult.data ?? { items: [] };
   identity = identityResult.data;
-  balance = balanceResult.data;
+  currentBalance = balanceResult.data?.currentBalance ?? null;
+  total = history.items.length;
+  signed = history.items.filter((item) => item.status === "SIGNED").length;
+  pending = history.items.filter((item) =>
+    [
+      "CONFIGURED",
+      "EXTERNAL_AUTH_PENDING",
+      "CHALLENGE_PENDING",
+      "RA_PENDING",
+      "CERT_PENDING",
+      "SIGNING",
+    ].includes(item.status),
+  ).length;
   operatorBalanceError = balanceResult.error
     ? "No pudimos consultar tu saldo actual. Recarga la página para intentarlo nuevamente."
     : null;
 }
-
-const total = history.items.length;
-const signed = history.items.filter((item) => item.status === "SIGNED").length;
-const pending = history.items.filter((item) =>
-  [
-    "CONFIGURED",
-    "EXTERNAL_AUTH_PENDING",
-    "CHALLENGE_PENDING",
-    "RA_PENDING",
-    "CERT_PENDING",
-    "SIGNING",
-  ].includes(item.status),
-).length;
 
 const identityLabels: Record<IdentityStatus, string> = {
   NOT_STARTED: "Sin iniciar",
@@ -87,7 +103,7 @@ const pageHref = (page: number) => {
 };
 ---
 
-<AppLayout title={user.role === "admin" ? "Administración" : "Dashboard"} user={user} credits={balance?.currentBalance}>
+<AppLayout title={user.role === "admin" ? "Administración" : "Dashboard"} user={user} credits={currentBalance ?? undefined}>
   <PageHeader
     class="mb-7"
     eyebrow={user.role === "admin" ? "Gestión operativa" : "Tu espacio de firma"}
@@ -244,7 +260,7 @@ const pageHref = (page: number) => {
         </div>
       )}
       <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <InfoCard title="Firmas disponibles" value={balance ? String(balance.currentBalance) : "—"} subtitle={balance ? "Saldo listo para usar" : "Información no disponible"} />
+        <InfoCard title="Firmas disponibles" value={currentBalance !== null ? String(currentBalance) : "—"} subtitle={currentBalance !== null ? "Saldo listo para usar" : "Información no disponible"} />
         <InfoCard title="Procesos totales" value={String(total)} subtitle="Tu historial de firmas" />
         <InfoCard title="Firmas exitosas" value={String(signed)} subtitle="Documentos listos para descarga" />
         <InfoCard title="En curso" value={String(pending)} subtitle="Procesos pendientes" />

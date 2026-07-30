@@ -161,7 +161,7 @@ export class AdminService {
     }
 
     const where = conditions.join(' and ');
-    const countRows = await this.dataSource.query<Array<{ total: number }>>(
+    const countPromise = this.dataSource.query<Array<{ total: number }>>(
       `select count(*)::int as total
        from public.users users
        join public.roles roles on roles.id = users.role_id
@@ -169,10 +169,8 @@ export class AdminService {
        where ${where}`,
       params,
     );
-    const total = countRows[0]?.total ?? 0;
-
     const listParams = [...params, this.pageSize, (page - 1) * this.pageSize];
-    const rows = await this.dataSource.query<AdminUserRow[]>(
+    const rowsPromise = this.dataSource.query<AdminUserRow[]>(
       `select
          users.id,
          concat_ws(' ', users.first_name, users.last_name) as full_name,
@@ -191,6 +189,8 @@ export class AdminService {
        limit $${params.length + 1} offset $${params.length + 2}`,
       listParams,
     );
+    const [countRows, rows] = await Promise.all([countPromise, rowsPromise]);
+    const total = countRows[0]?.total ?? 0;
 
     return {
       items: rows.map((row) => ({

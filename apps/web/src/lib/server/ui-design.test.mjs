@@ -71,6 +71,16 @@ test("balance passes its real credit count into the application shell", async ()
   assert.match(page, /credits=\{balance\?\.currentBalance\}/);
 });
 
+test("dashboard prefers one aggregated request and keeps legacy fallbacks", async () => {
+  const page = await read("../../pages/dashboard.astro");
+
+  assert.match(page, /serverFetchJson<DashboardResponse>/);
+  assert.match(page, /`\/api\/dashboard/);
+  assert.match(page, /\/api\/admin\/dashboard/);
+  assert.match(page, /\/api\/history/);
+  assert.match(page, /dashboardResult\.data\?\.role/);
+});
+
 test("the PDF wizard keeps its API contract while exposing accessible redesigned controls", async () => {
   const wizard = await read("../../components/islands/SignWizard.tsx");
   assert.match(wizard, /from "lucide-react"/);
