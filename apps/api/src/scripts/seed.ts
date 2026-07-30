@@ -1,13 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../app.module';
 import { AuthService } from '../auth/auth.service';
+import { SupabaseSetupService } from '../supabase/supabase-setup.service';
 
 async function run() {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: false,
   });
   try {
+    const supabaseSetupService = app.get(SupabaseSetupService);
     const authService = app.get(AuthService);
+    await supabaseSetupService.ensureStorageBucket();
     await authService.seedDefaultUsers();
   } finally {
     await app.close();

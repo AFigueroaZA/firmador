@@ -1,14 +1,14 @@
-import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { loadAppConfig } from '../config/app.config';
 import { SupabaseService } from './supabase.service';
 
 @Injectable()
-export class SupabaseBootstrapService implements OnApplicationBootstrap {
+export class SupabaseSetupService {
   private readonly config = loadAppConfig();
 
   constructor(private readonly supabaseService: SupabaseService) {}
 
-  async onApplicationBootstrap() {
+  async ensureStorageBucket() {
     const storage = this.supabaseService.getAdminClient().storage;
     const { data } = await storage.getBucket(this.config.supabaseStorageBucket);
     if (data) {

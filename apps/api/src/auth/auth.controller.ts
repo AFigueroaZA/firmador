@@ -44,7 +44,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionAuthGuard)
-  async me(@CurrentUser() requestUser: RequestUser) {
-    return this.authService.getSession(requestUser);
+  me(@CurrentUser() requestUser: RequestUser) {
+    return { user: requestUser };
   }
 }

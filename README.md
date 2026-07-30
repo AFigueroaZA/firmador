@@ -37,7 +37,9 @@ Antes de ejecutar `pnpm seed` completa los secretos obligatorios en `.env`: `DAT
 
 ## Credenciales seed
 
-Las cuentas iniciales se crean solo cuando la base esta vacia y toman sus valores desde `.env`:
+`pnpm seed` garantiza primero el bucket privado de Storage y luego crea las
+cuentas iniciales solo cuando la base esta vacia. La API no ejecuta estas
+operaciones durante su arranque. Las cuentas toman sus valores desde `.env`:
 
 - `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`
 - `SEED_OPERATOR_EMAIL` / `SEED_OPERATOR_PASSWORD`
@@ -65,7 +67,7 @@ Referencia de variables:
 | `DATABASE_SCHEMA` | Schema Postgres usado por TypeORM. En este proyecto debe ser `public`. |
 | `NEXT_PUBLIC_SUPABASE_URL` | URL publica del proyecto Supabase. La usa el backend para Supabase Auth. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key de Supabase. La usa el backend para login compatible con Supabase Auth. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key usada solo por el backend para Auth Admin, Storage y bootstrap. Nunca se expone al frontend. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key usada solo por el backend para Auth Admin y el setup explicito de Storage mediante `pnpm seed`. Nunca se expone al frontend. |
 | `SUPABASE_STORAGE_BUCKET` | Bucket privado de Supabase Storage para PDFs e imagenes. Por defecto `documents`. |
 | `PROVIDER_ALLOW_INSECURE_TLS` | Flag para permitir TLS inseguro en integraciones del proveedor cuando sea necesario para ambientes no productivos. Por defecto `false`. |
 | `PROVIDER_CLAVE_UNICA_BASE_URL` | URL base de los endpoints REST de Clave Unica del proveedor. |
@@ -85,10 +87,10 @@ Referencia de variables:
 | `PROVIDER_QR_Y` | Posicion Y del codigo QR cuando `PROVIDER_QR_ENABLED=true`. |
 | `DEFAULT_CERTIFICATE_PASSWORD` | Contrasena asignada al certificado solicitado/descargado. Obligatoria en modo `live`. |
 | `CERTIFICATE_VALIDITY_DAYS` | Vigencia del certificado, en dias, enviada a RA. Por defecto `365`. |
-| `SEED_ADMIN_EMAIL` | Email del usuario administrador inicial creado por el seed/bootstrap cuando la base esta vacia. |
-| `SEED_ADMIN_PASSWORD` | Contrasena del administrador inicial. Es obligatoria para seed/bootstrap y no debe versionarse con valores reales. |
-| `SEED_OPERATOR_EMAIL` | Email del usuario operador inicial creado por el seed/bootstrap cuando la base esta vacia. |
-| `SEED_OPERATOR_PASSWORD` | Contrasena del operador inicial. Es obligatoria para seed/bootstrap y no debe versionarse con valores reales. |
+| `SEED_ADMIN_EMAIL` | Email del usuario administrador inicial creado por `pnpm seed` cuando la base esta vacia. |
+| `SEED_ADMIN_PASSWORD` | Contrasena del administrador inicial. Es obligatoria para `pnpm seed` y no debe versionarse con valores reales. |
+| `SEED_OPERATOR_EMAIL` | Email del usuario operador inicial creado por `pnpm seed` cuando la base esta vacia. |
+| `SEED_OPERATOR_PASSWORD` | Contrasena del operador inicial. Es obligatoria para `pnpm seed` y no debe versionarse con valores reales. |
 
 ## Plantillas `.env.example`
 

@@ -8,5 +8,6 @@ import { AdminService } from './admin.service';
   imports: [AuthModule, CreditsModule],
   controllers: [AdminController],
   providers: [AdminService],
+  exports: [AdminService],
 })
 export class AdminModule {}

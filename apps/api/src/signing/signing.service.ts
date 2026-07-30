@@ -11,6 +11,7 @@ import {
 import type {
   ChallengePayload,
   CreateSigningProcessResponse,
+  DashboardResponse,
   PaymentEligibilityResponse,
   SignOptions,
   SigningProcessDetail,
@@ -275,6 +276,41 @@ export class SigningService {
       aliveItems.push(mapProcessToSummary(process));
     }
     return aliveItems;
+  }
+
+  async getDashboardCounts(
+    userId: string,
+  ): Promise<Extract<DashboardResponse, { role: 'operator' }>['signing']> {
+    const row = await this.processRepository
+      .createQueryBuilder('process')
+      .select('count(*)::int', 'total')
+      .addSelect(
+        `count(*) filter (
+          where process.metadata ->> 'currentStep' = 'SIGNED'
+        )::int`,
+        'signed',
+      )
+      .addSelect(
+        `count(*) filter (
+          where process.metadata ->> 'currentStep' in (
+            'CONFIGURED', 'EXTERNAL_AUTH_PENDING', 'CHALLENGE_PENDING',
+            'RA_PENDING', 'CERT_PENDING', 'SIGNING'
+          )
+          and (
+            process.expires_at is null
+            or process.expires_at > now()
+          )
+        )::int`,
+        'pending',
+      )
+      .where('process.user_id = :userId', { userId })
+      .getRawOne<{ total?: number; signed?: number; pending?: number }>();
+
+    return {
+      total: Number(row?.total ?? 0),
+      signed: Number(row?.signed ?? 0),
+      pending: Number(row?.pending ?? 0),
+    };
   }
 
   async getAuthorizationUrl(

@@ -44,6 +44,12 @@ export class CreditsService {
   }
 
   async getCurrentBalance(userId: string) {
+    const account = await this.dataSource
+      .getRepository(SignatureAccountEntity)
+      .findOne({ where: { userId } });
+    if (account) {
+      return account.currentBalance;
+    }
     return (await this.ensureAccount(userId)).currentBalance;
   }
 

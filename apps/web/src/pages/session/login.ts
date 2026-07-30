@@ -1,5 +1,10 @@
 import type { APIRoute } from "astro";
+import type { AuthSession } from "@firmador/shared";
 import { apiUrl } from "../../lib/server/api";
+import {
+  createSessionCacheCookie,
+  getCookieValue,
+} from "../../lib/server/session-cache.mjs";
 
 export const POST: APIRoute = async ({ request }) => {
   const formData = await request.formData();
@@ -17,15 +22,27 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   const headers = new Headers(response.headers);
+  const setCookies =
+    typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [];
+  const session = (await response.json().catch(() => null)) as AuthSession | null;
+  const accessToken = getCookieValue(setCookies, "firmador_access");
+  if (session?.user && accessToken) {
+    const cacheCookie = createSessionCacheCookie(
+      session,
+      accessToken,
+      import.meta.env.PROD,
+    );
+    if (cacheCookie) {
+      headers.append("set-cookie", cacheCookie);
+    }
+  }
 
   // Send the user to the enrollment challenge if their signature
   // certificate is not active yet; otherwise straight to the dashboard.
   let location = "/dashboard";
   try {
-    const setCookies =
-      typeof response.headers.getSetCookie === "function"
-        ? response.headers.getSetCookie()
-        : [];
     const cookieHeader = setCookies
       .map((cookie) => cookie.split(";")[0])
       .join("; ");
