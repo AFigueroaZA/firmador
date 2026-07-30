@@ -634,7 +634,7 @@ export class SigningService {
 
       process.externalIdentity = result.identity;
       process.providerContextEncrypted = this.sealedPayloadService.sealJson(
-        result.providerContext as Record<string, unknown>,
+        result.providerContext,
       );
 
       process.status = 'EXTERNAL_AUTH_DONE';
@@ -718,7 +718,7 @@ export class SigningService {
       });
       process.status = 'CERT_PENDING';
       process.providerContextEncrypted = this.sealedPayloadService.sealJson(
-        raResult.providerContext as Record<string, unknown>,
+        raResult.providerContext,
       );
       await this.saveProcess(process);
       await this.auditService.record({
@@ -741,7 +741,7 @@ export class SigningService {
       });
       process.status = 'SIGNING';
       process.providerContextEncrypted = this.sealedPayloadService.sealJson(
-        certificateResult.providerContext as Record<string, unknown>,
+        certificateResult.providerContext,
       );
       await this.saveProcess(process);
       await this.auditService.record({

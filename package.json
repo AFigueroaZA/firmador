@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.6.4",
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
   "scripts": {
     "predev": "node scripts/with-root-env.mjs pnpm --filter @firmador/shared build",
     "dev": "node scripts/dev.mjs",
@@ -16,8 +19,8 @@
     "seed": "node scripts/with-root-env.mjs pnpm --filter @firmador/api seed"
   },
   "dependencies": {
-    "@nestjs/microservices": "^11.1.27",
-    "@nestjs/websockets": "^11.1.27",
+    "@nestjs/microservices": "^11.1.28",
+    "@nestjs/websockets": "^11.1.28",
     "serverless-http": "^4.0.0"
   }
 }

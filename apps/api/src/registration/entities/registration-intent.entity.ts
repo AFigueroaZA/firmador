@@ -10,10 +10,7 @@ import {
 } from 'typeorm';
 
 export type RegistrationIntentStatus =
-  | 'PENDING'
-  | 'VALIDATED'
-  | 'FAILED'
-  | 'COMPLETED';
+  'PENDING' | 'VALIDATED' | 'FAILED' | 'COMPLETED';
 
 @Entity('registration_intents')
 export class RegistrationIntentEntity {

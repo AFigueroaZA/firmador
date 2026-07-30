@@ -38,7 +38,7 @@ export class AuditService {
         message: input.message,
         fromStatus: input.fromStatus ?? null,
         toStatus: input.toStatus ?? null,
-        meta: (sanitizeObject(input.meta) as Record<string, unknown>) ?? null,
+        meta: sanitizeObject(input.meta) ?? null,
       },
     });
     return this.auditRepository.save(entity);

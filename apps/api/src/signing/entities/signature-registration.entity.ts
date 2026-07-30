@@ -7,10 +7,7 @@ import {
 } from 'typeorm';
 
 export type SignatureRegistrationStatus =
-  | 'ACTIVE'
-  | 'PENDING'
-  | 'EXPIRED'
-  | 'REVOKED';
+  'ACTIVE' | 'PENDING' | 'EXPIRED' | 'REVOKED';
 
 @Entity('signature_registrations')
 export class SignatureRegistrationEntity {
