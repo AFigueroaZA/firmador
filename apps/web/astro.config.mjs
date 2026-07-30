@@ -8,6 +8,9 @@ const isNetlify = process.env.NETLIFY === "true";
 
 export default defineConfig({
   output: "server",
+  devToolbar: {
+    enabled: false,
+  },
   adapter: isNetlify ? netlify() : node({ mode: "standalone" }),
   integrations: [react()],
   vite: {
