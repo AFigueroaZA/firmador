@@ -1,6 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+overrides:
+  fast-xml-builder: 1.1.7
+  handlebars: 4.7.9
+  multer: 2.2.0
+  path-to-regexp: 8.4.0
 allowBuilds:
   '@nestjs/core': true
   argon2: true
