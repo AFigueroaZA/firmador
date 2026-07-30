@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS build
+FROM node:22.22.0-bookworm-slim AS build
 WORKDIR /app
 RUN corepack enable
 
@@ -13,7 +13,7 @@ COPY packages/shared ./packages/shared
 RUN pnpm --filter @firmador/shared build
 RUN pnpm --filter @firmador/api build
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:22.22.0-bookworm-slim AS runtime
 WORKDIR /app
 RUN corepack enable
 

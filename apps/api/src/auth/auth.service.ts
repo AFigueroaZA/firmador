@@ -85,8 +85,7 @@ export class AuthService {
 
   async refresh(request: Request, response: Response): Promise<AuthSession> {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token missing.');
     }
@@ -120,8 +119,7 @@ export class AuthService {
 
   async authenticateRequest(request: Request): Promise<RequestUser | null> {
     const accessToken = request.cookies?.[ACCESS_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     if (!accessToken) {
       return null;
     }
